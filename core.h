@@ -42,4 +42,33 @@ struct AccelStruct
     unsigned int nodeByteOffset;
     unsigned int faceRefByteOffset;
     unsigned int faceByteOffset;
+    unsigned int _; // alignment
+};
+
+struct DeviceBVHNode
+{
+	// bounding box
+	aiVector3f _bottom;
+    float _0;
+	aiVector3f _top;
+    float _1;
+
+	// parameters for leafnodes and innernodes occupy same space (union) to save memory
+	// top bit discriminates between leafnode and innernode
+	// no pointers, but indices (int): faster
+
+	union {
+		// inner node - stores indexes to array of CacheFriendlyBVHNode
+		struct {
+			unsigned _idxLeft;
+			unsigned _idxRight;
+		} inner;
+		// leaf node: stores triangle count and starting index in triangle list
+		struct {
+			unsigned _count; // Top-most bit set, leafnode if set, innernode otherwise
+			unsigned _startIndexInTriIndexList;
+		} leaf;
+	} node;
+
+    unsigned int _2, _3;
 };

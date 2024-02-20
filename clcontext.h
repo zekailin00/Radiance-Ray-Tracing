@@ -52,6 +52,7 @@ void CLContext::Cleanup() {
 CLContext* CLContext::GetCLContext()
 {
     CLContext* ctx = new CLContext();
+    printf("\nCreate CL context\n");
 
     CL_CHECK(clGetPlatformIDs(1, &ctx->platform_id, NULL));
     CL_CHECK(clGetDeviceIDs(ctx->platform_id, CL_DEVICE_TYPE_DEFAULT, 1, &ctx->device_id, NULL));
@@ -71,7 +72,6 @@ CLContext* CLContext::GetCLContext()
     printf("CL_DEVICE_VENDOR: %s\n", buffer);
     //////////////////////////////////////////////////////////////////////////////
 
-    printf("Create context\n");
     ctx->context = CL_CHECK2(clCreateContext(NULL, 1, &ctx->device_id, NULL, NULL,  &_err));
     ctx->commandQueue = CL_CHECK2(clCreateCommandQueue(ctx->context, ctx->device_id, 0, &_err));  
 

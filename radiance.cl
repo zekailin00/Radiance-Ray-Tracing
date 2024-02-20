@@ -6,24 +6,27 @@ struct AccelStruct
     unsigned int nodeByteOffset;
     unsigned int faceRefByteOffset;
     unsigned int faceByteOffset;
+    unsigned int _; // alignment
 };
 
 struct BVHNode
 {
-   	float3 _bottom;
-	float3 _top;
+   	float4 _bottom;
+	float4 _top;
 
 	union {
-		// inner node - stores indexes to array of CacheFriendlyBVHNode
+		// inner node - stores indexes to children
 		struct {
 			unsigned int _idxLeft;
 			unsigned int _idxRight;
+            unsigned int _2, _3; // alignment
 		} inner;
 
-		// leaf node: stores triangle count and starting index in triangle list
+		// leaf node: stores face count and references
 		struct {
 			unsigned int _count; // Top-most bit set, leafnode if set, innernode otherwise
 			unsigned int _startIndexFaceRefList;
+            unsigned int _2, _3; // alignment
 		} leaf;
 	} node;
 };
@@ -95,6 +98,7 @@ bool intersectTriangle(float3 origin, float3 direction,
 // https://gist.github.com/DomNomNom/46bb1ce47f68d255fd5d
 bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax)
 {
+
     float3 tMin = (boxMin - rayOrigin) / rayDir;
     float3 tMax = (boxMax - rayOrigin) / rayDir;
     float3 t1 = min(tMin, tMax);
@@ -103,13 +107,18 @@ bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax
     float tFar = min(min(t2.x, t2.y), t2.z);
 
     if (tFar > max(tNear, 0.0f))
+    {
+        // printf("Pixel: %ld intersects AABB\n\tray origin <%f, %f, %f> \n\trayDir <%f, %f, %f> \n\ttNear: %f   tFar: %f\n", 
+        //     get_global_id(0), rayOrigin.x, rayOrigin.y, rayOrigin.z, rayDir.x, rayDir.y, rayDir.z, tNear, tFar
+        // );
         return true;
+    }
     return false;
 };
 
-#define TO_BVH_NODE(accelStruct) (struct BVHNode*)(((uchar*)accelStruct) + accelStruct->nodeByteOffset)
-#define TO_FACE_REF(accelStruct) (unsigned int*)(((uchar*)accelStruct) + accelStruct->faceRefByteOffset)
-#define TO_FACE(accelStruct) (struct Triangle*)(((uchar*)accelStruct) + accelStruct->faceByteOffset)
+#define TO_BVH_NODE(accelStruct) (struct BVHNode*)(((char*)accelStruct) + accelStruct->nodeByteOffset)
+#define TO_FACE_REF(accelStruct) (unsigned int*)(((char*)accelStruct) + accelStruct->faceRefByteOffset)
+#define TO_FACE(accelStruct) (struct Triangle*)(((char*)accelStruct) + accelStruct->faceByteOffset)
 #define IS_LEAF(BVHNode) (BVHNode->node.leaf._count & 0x80000000)
 #define GET_COUNT(BVHNode) (BVHNode->node.leaf._count & 0x7fffffff)
 #define BVH_STACK_SIZE 128
@@ -143,21 +152,25 @@ bool intersect(
 
 		struct BVHNode* node = nodeList + nodeIdx;
 
-        //FIXME:
-        // if (get_global_id(0) == 0)
-        // {
-        //     printf("node index: %d\n", nodeIdx);
-        //     printf("stack ID: %d\n", stackIdx);
-        //     unsigned int val = topLevel->nodeByteOffset;
-        //     printf("topLevel e1:%d\n", val);
-        //     // printf("node left index: %d\n", node->node.inner._idxLeft);
-        // }
+        if (get_global_id(0) == 0)
+        {
+            
+            printf("\nNode Index: %d\n", nodeIdx);
+            printf("Stack ID: %d\n", stackIdx);
+            printf("AABB Top: <%f, %f, %f>\n", node->_top.x, node->_top.y, node->_top.z);
+            printf("AABB Botton: <%f, %f, %f>\n", node->_bottom.x, node->_bottom.y, node->_bottom.z);
+            printf("Is leaf: %x\n", IS_LEAF(node));
+            if (!IS_LEAF(node))
+            {
+                printf("node->node.inner._idxLeft: %x\n", (node->node.inner._idxLeft));
+                printf("node->node.inner._idxRight: %x\n", (node->node.inner._idxRight));
+            }
+        }
 
 		if (!IS_LEAF(node)) // INNER NODE
         {
-
 			// if ray intersects inner node, push indices of left and right child nodes on the stack
-			if (intersectAABB(origin, direction, node->_bottom, node->_top))
+			if (intersectAABB(origin, direction, node->_bottom.xyz, node->_top.xyz))
             {
 				stack[stackIdx++] = node->node.inner._idxRight; // right child node index
 				stack[stackIdx++] = node->node.inner._idxLeft;  // left child node index

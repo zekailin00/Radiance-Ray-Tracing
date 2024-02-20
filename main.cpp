@@ -62,23 +62,23 @@ cl_mem buildAccelStruct(CLContext* ctx,
         nodeListSize + faceRefListSize + triListSize;
 
 #ifndef NDEBUG
-    printf("DeviceBVHNode size:%ld; %ld elements; array bytes: %ld\n",
+    printf("DeviceBVHNode size: %ld\n\t %ld elements\n\t array bytes: %u\n",
         sizeof(DeviceBVHNode), nodeList.size(), nodeListSize);
-    printf("FaceRef (unsigned int) size:%ld; %ld elements; array bytes: %ld\n",
+    printf("FaceRef (unsigned int) size: %ld\n\t %ld elements\n\t array bytes: %u\n",
         sizeof(unsigned int), faceRefList.size(), faceRefListSize);
-    printf("Triangle size:%ld; %ld elements; array bytes: %ld\n",
+    printf("Triangle size: %ld\n\t %ld elements\n\t array bytes: %u\n",
         sizeof(Triangle), triangleList.size(), triListSize);
-    printf("AccelStruct header size: %ld\n", sizeof(AccelStruct));
-    printf("Total AccelStruct data size: %ld\n", bufferSizeByte);
+    printf("AccelStruct header size: %lu\n", sizeof(AccelStruct));
+    printf("Total AccelStruct data size: %u\n", bufferSizeByte);
 #endif
 
     cl_mem accelStructBuf = CL_CHECK2(clCreateBuffer(
         ctx->context, CL_MEM_READ_WRITE, bufferSizeByte, NULL, &_err));
 
     AccelStruct accelStruct = {
-        .nodeByteOffset = sizeof(AccelStruct),
-        .faceRefByteOffset = sizeof(AccelStruct) + nodeListSize,
-        .faceByteOffset = sizeof(AccelStruct) + nodeListSize + faceRefListSize
+        .nodeByteOffset = (unsigned)sizeof(AccelStruct),
+        .faceRefByteOffset = (unsigned)sizeof(AccelStruct) + nodeListSize,
+        .faceByteOffset = (unsigned)sizeof(AccelStruct) + nodeListSize + faceRefListSize
     };
 
     CL_CHECK(clEnqueueWriteBuffer(ctx->commandQueue, accelStructBuf, CL_TRUE,
@@ -93,6 +93,8 @@ cl_mem buildAccelStruct(CLContext* ctx,
     CL_CHECK(clEnqueueWriteBuffer(ctx->commandQueue, accelStructBuf, CL_TRUE,
         accelStruct.faceByteOffset, triListSize, triangleList.data(),
         0, NULL, NULL));
+
+    return accelStructBuf;
 }
 
 bool modelLoader(
@@ -114,7 +116,7 @@ bool modelLoader(
 
     // If the import failed, report it
     if (nullptr == scene) {
-        printf(importer.GetErrorString());
+        printf("%s", importer.GetErrorString());
         return false;
     }
 
@@ -241,6 +243,8 @@ int triangleHit(CLContext* ctx, cl_mem& accelStructBuf)
 
     stbi_write_jpg("output.jpg", WIDTH, HEIGHT, CHANNEL, image, 100);
     ctx->Cleanup();
+
+    return 0;
 }
 
 
@@ -248,12 +252,13 @@ int directGen()
 {
     CLContext* ctx = CLContext::GetCLContext();
 
-    const size_t WIDTH = 3840;
-    const size_t HEIGHT = 2160;
+    const size_t WIDTH = 720;
+    const size_t HEIGHT = 720;
     const size_t CHANNEL = 4;
     AccelStruct accelStruct = {
-        // .radius = 20.0f,
-        // .pos = {0.0, 0.0, 10.0}
+        .nodeByteOffset = 1,
+        .faceRefByteOffset = 2,
+        .faceByteOffset = 3
     };
     unsigned int extent[2] = {WIDTH, HEIGHT};
     uint8_t* image = (uint8_t*)malloc(WIDTH * HEIGHT * CHANNEL);
@@ -324,4 +329,6 @@ int directGen()
 
     stbi_write_jpg("output.jpg", WIDTH, HEIGHT, CHANNEL, image, 100);
     ctx->Cleanup();
+
+    return 0;
 }
