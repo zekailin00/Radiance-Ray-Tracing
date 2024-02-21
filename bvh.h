@@ -21,7 +21,7 @@
 #endif
 unsigned g_reportCounter = 0;
 
-#define MAX_LEAF_PRIM_SIZE 100
+#define MAX_LEAF_PRIM_SIZE 4
 
 
 struct BVHNode

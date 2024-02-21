@@ -37,15 +37,16 @@ struct Triangle {
 	// Vector3Df _e1, _e2, _e3;
 };
 
-struct AccelStruct
+struct AccelStruct // mapped
 {
     unsigned int nodeByteOffset;
-    unsigned int faceRefByteOffset;
     unsigned int faceByteOffset;
+    unsigned int faceRefByteOffset;
     unsigned int _; // alignment
 };
 
-struct DeviceBVHNode
+
+struct DeviceBVHNode // mapped
 {
 	// bounding box
 	aiVector3f _bottom;
@@ -71,4 +72,21 @@ struct DeviceBVHNode
 	} node;
 
     unsigned int _2, _3;
+};
+
+
+struct DeviceTriangle // mapped
+{
+    // FIXME: use indices for optimization
+    // // indexes in vertices array
+	// unsigned _idx0;
+	// unsigned _idx1;
+	// unsigned _idx2;
+
+    aiVector3f v0;
+    float _0;
+    aiVector3f v1;
+    float _1;
+    aiVector3f v2;
+    float _2;
 };

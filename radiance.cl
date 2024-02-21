@@ -4,8 +4,8 @@ struct Payload;
 struct AccelStruct
 {
     unsigned int nodeByteOffset;
-    unsigned int faceRefByteOffset;
     unsigned int faceByteOffset;
+    unsigned int faceRefByteOffset;
     unsigned int _; // alignment
 };
 
@@ -33,19 +33,15 @@ struct BVHNode
 
 struct Triangle
 {
-    unsigned int index;
+    // FIXME: use indices for optimization
+    // // indexes in vertices array
+	// unsigned _idx0;
+	// unsigned _idx1;
+	// unsigned _idx2;
 
-    // bounding box
-	float _bottom[3];
-	float _top[3];
-
-    // indexes in vertices array
-	unsigned int _idx0;
-	unsigned int _idx1;
-	unsigned int _idx2;
-
-    float3 v0, v1, v2;
-    float3 _normal;
+    float4 v0;// v0.xyz is vertex; v0.w is not used
+    float4 v1;
+    float4 v2;
 };
 
 struct HitData
@@ -61,29 +57,37 @@ bool intersectTriangle(float3 origin, float3 direction,
                        const struct Triangle* triangle,
                        float3* intersectPoint, float* distance)
 {
-    float3 edge1 = triangle->v1 - triangle->v0;
-    float3 edge2 = triangle->v2 - triangle->v0;
+    float3 edge1 = triangle->v1.xyz - triangle->v0.xyz;
+    float3 edge2 = triangle->v2.xyz - triangle->v0.xyz;
+
+    // printf("[pass 1] triangle intersection at pixel %d with e0: %f\n", get_global_id(0), edge1.x);
+    // return false;
+
     float3 ray_cross_e2 = cross(direction, edge2);
     float det = dot(edge1, ray_cross_e2);
+
+    // printf("Pixel %d: e1: <%f, %f, %f> %f\n", get_global_id(0), edge1.x, edge1.y, edge1.z, det);
 
     if (det > -FLT_EPSILON && det < FLT_EPSILON)
         return false;    // This ray is parallel to this triangle.
 
     float inv_det = 1.0 / det;
-    float3 s = origin - triangle->v0;
+    float3 s = origin - triangle->v0.xyz;
     float u = inv_det * dot(s, ray_cross_e2);
-
-    if (u < 0 || u > 1)
-        return false;
 
     float3 s_cross_e1 = cross(s, edge1);
     float v = inv_det * dot(direction, s_cross_e1);
 
-    if (v < 0 || u + v > 1)
-        return false;
-
     // At this stage we can compute t to find out where the intersection point is on the line.
     float t = inv_det * dot(edge2, s_cross_e1);
+
+    // printf("Pixel %d: <t, b1, b2>: <%f, %f, %f>\n", get_global_id(0), t, u, v);
+
+    if (u < 0 || u > 1)
+        return false;
+
+    if (v < 0 || u + v > 1)
+        return false;
 
     if (t > FLT_EPSILON) // ray intersection
     {
@@ -124,19 +128,43 @@ bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax
 #define BVH_STACK_SIZE 128
 
 bool intersect(
-    struct AccelStruct* topLevel,
+    __global struct AccelStruct* topLevel,
     float3 origin, float3 direction,
     float Tmin, float Tmax, struct HitData* hitData)
 {
     // return false;
 	// Closest triangle hit
-	unsigned int bestFaceIndex = -1;
+	int bestFaceIndex = -1;
 	float bestFaceDist = FLT_MAX;
     float3 hitPoint;
 
     struct BVHNode* nodeList  = TO_BVH_NODE(topLevel);
     unsigned int* faceRefList = TO_FACE_REF(topLevel);
     struct Triangle* faceList = TO_FACE(topLevel);
+
+    if (get_global_id(0) == 0)
+    {
+        printf(
+            // "\ntopLevel addr: %x\n"
+            // "nodeList addr: %x\n"
+            // "faceRefList addr: %x\n"
+            // "faceList addr: %x\n"
+            "accelStruct->nodeByteOffset: %u\n"
+            "accelStruct->faceRefByteOffset: %u\n"
+            "accelStruct->faceByteOffset: %u\n"
+            "faceRefList 0: %u\n"
+            "faceRefList 1: %u\n"
+            "faceRefList 2: %u\n"
+        // ,topLevel, nodeList, faceRefList, faceList,
+        ,topLevel->nodeByteOffset, topLevel->faceRefByteOffset, topLevel->faceByteOffset,
+        faceRefList[0], faceRefList[1], faceRefList[2]);
+
+        struct Triangle* face6 = faceList + 8;
+        printf("face6: vert0: <%f, %f, %f>\n\tvert1: <%f, %f, %f>\n\tvert2: <%f, %f, %f>\n"
+            ,face6->v0.x, face6->v0.y, face6->v0.z, face6->v1.x, face6->v1.y, face6->v1.z,
+            face6->v2.x, face6->v2.y, face6->v2.z
+        );
+    }
 
     // Stack pointing to BVH node index
 	unsigned int stack[BVH_STACK_SIZE];
@@ -152,26 +180,30 @@ bool intersect(
 
 		struct BVHNode* node = nodeList + nodeIdx;
 
-        if (get_global_id(0) == 0)
-        {
+        // if (get_global_id(0) == 0)
+        // {
             
-            printf("\nNode Index: %d\n", nodeIdx);
-            printf("Stack ID: %d\n", stackIdx);
-            printf("AABB Top: <%f, %f, %f>\n", node->_top.x, node->_top.y, node->_top.z);
-            printf("AABB Botton: <%f, %f, %f>\n", node->_bottom.x, node->_bottom.y, node->_bottom.z);
-            printf("Is leaf: %x\n", IS_LEAF(node));
-            if (!IS_LEAF(node))
-            {
-                printf("node->node.inner._idxLeft: %x\n", (node->node.inner._idxLeft));
-                printf("node->node.inner._idxRight: %x\n", (node->node.inner._idxRight));
-            }
-        }
+        //     printf("\nNode Index: %d\n", nodeIdx);
+        //     printf("Stack ID: %d\n", stackIdx);
+        //     printf("AABB Top: <%f, %f, %f>\n", node->_top.x, node->_top.y, node->_top.z);
+        //     printf("AABB Botton: <%f, %f, %f>\n", node->_bottom.x, node->_bottom.y, node->_bottom.z);
+        //     printf("Is leaf: %x\n", IS_LEAF(node));
+        //     if (!IS_LEAF(node))
+        //     {
+        //         printf("node->node.inner._idxLeft: %d\n", (node->node.inner._idxLeft));
+        //         printf("node->node.inner._idxRight: %d\n", (node->node.inner._idxRight));
+        //     }
+        // }
 
 		if (!IS_LEAF(node)) // INNER NODE
         {
 			// if ray intersects inner node, push indices of left and right child nodes on the stack
 			if (intersectAABB(origin, direction, node->_bottom.xyz, node->_top.xyz))
             {
+                // printf("\n {AABB} Node Index: %d\nStack ID: %d\nAABB Top: <%f, %f, %f>\nAABB Botton: <%f, %f, %f>\nnode->node.inner._idxLeft: %d\nnode->node.inner._idxRight: %d\n",
+                // nodeIdx, stackIdx, node->_top.x, node->_top.y, node->_top.z, node->_bottom.x, node->_bottom.y, node->_bottom.z,
+                // node->node.inner._idxLeft, node->node.inner._idxRight);
+
 				stack[stackIdx++] = node->node.inner._idxRight; // right child node index
 				stack[stackIdx++] = node->node.inner._idxLeft;  // left child node index
 				
@@ -187,45 +219,63 @@ bool intersect(
             unsigned int beginIdx = node->node.leaf._startIndexFaceRefList;
             unsigned int endIdx = beginIdx + GET_COUNT(node);
 
+            // printf("\n {leaf} Node Index: %d\nStack ID: %d\nAABB Top: <%f, %f, %f>\nAABB Botton: <%f, %f, %f>\nnode->node.leaf._count: %d\nnode->node.leaf._startIndexFaceRefList: %d\n",
+            //     nodeIdx, stackIdx, node->_top.x, node->_top.y, node->_top.z, node->_bottom.x, node->_bottom.y, node->_bottom.z,
+            //     GET_COUNT(node), node->node.leaf._startIndexFaceRefList);
+            // printf("\tTesting faces of index from %u to %u\n", beginIdx, endIdx);
+
+
 			// loop over every triangle in the leaf node
 			for (unsigned i = beginIdx; i < endIdx; i++)
             {
-				int faceIdx = faceRefList[i];
+				unsigned int faceIdx = faceRefList[i];
                 struct Triangle* face = faceList + faceIdx;
 
                 float3 intersectPoint;
                 float distance;
-                if (!intersectTriangle(origin, direction, face, &intersectPoint, &distance))
-                    continue;
 
-                if (distance < bestFaceDist)
+                // printf("\nPixel %d trig intersect <idx, faceIdx>: <%u, %u>: \n\torigin: <%f, %f, %f>\n\tdir: <%f, %f, %f>\n\t"
+                //     "vert0: <%f, %f, %f>\n\tvert1: <%f, %f, %f>\n\tvert2: <%f, %f, %f>\n",
+                //     (int)get_global_id(0), i, faceIdx,
+                //     origin.x, origin.y, origin.z, direction.x, direction.y, direction.z
+                //     ,face->v0.x, face->v0.y, face->v0.z, face->v1.x, face->v1.y, face->v1.z,
+                //     face->v2.x, face->v2.y, face->v2.z
+                // );
+
+                if (intersectTriangle(origin, direction, face, &intersectPoint, &distance))
                 {
-                    // maintain the closest hit
-                    bestFaceIndex = faceIdx;
-                    bestFaceDist = distance;
-                    hitPoint = intersectPoint;
-                    
-                    // store barycentric coordinates (for texturing, not used for now)
+                    // printf("\nPixel %d trig Hit:\n\torigin: <%f, %f, %f>\n\tdir: <%f, %f, %f>\n\t",
+                    //     get_global_id(0), origin.x, origin.y, origin.z, direction.x, direction.y, direction.z
+                    // );
+
+                    if (distance < bestFaceDist)
+                    {
+                        // maintain the closest hit
+                        bestFaceIndex = (int)faceIdx;
+                        bestFaceDist = distance;
+                        hitPoint = intersectPoint;
+                        
+                        // store barycentric coordinates (for texturing, not used for now)
+                    }
                 }
 			}
 		}
 	}
-
     hitData->hitPoint = hitPoint;
     hitData->primitiveIndex = bestFaceIndex;
 	return bestFaceIndex != -1;
 }
 
-void hit (struct Payload* ray, struct HitData* hitData);
+void hit (struct Payload* payload, struct HitData* hitData);
 void miss(struct Payload* ray);
 
 //!raygen 
 void traceRay(
-    struct AccelStruct* topLevel,
+    __global struct AccelStruct* topLevel,
     float3 origin,
     float3 direction,
     float Tmin, float Tmax,
-    __local struct Payload* payload)
+    struct Payload* payload)
 {
     struct HitData hitData;
     if (intersect(topLevel, origin, direction, Tmin, Tmax, &hitData))

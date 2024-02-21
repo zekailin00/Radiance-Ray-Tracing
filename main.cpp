@@ -21,7 +21,7 @@ int triangleHit(CLContext* ctx, cl_mem& accelStructBuf);
 cl_mem buildAccelStruct(CLContext* ctx,
     const std::vector<DeviceBVHNode>& nodeList,
     const std::vector<unsigned int>& faceRefList,
-    const std::vector<Triangle>& triangleList);
+    const std::vector<DeviceTriangle>& triangleList);
 
 std::string cwd = "/home/zekailin00/Desktop/ray-tracing/framework";
 
@@ -42,7 +42,16 @@ int main()
     printf("node list size: %ld\n", nodeList.size());
 
     CLContext* ctx = CLContext::GetCLContext();
-    cl_mem accelStructBuf = buildAccelStruct(ctx, nodeList, faceRefList, triangles);
+
+    std::vector<DeviceTriangle> deviceTriangleList;
+    for (const Triangle& f: triangles)
+    {
+        deviceTriangleList.push_back({
+            f.v0, 0.0f, f.v1, 0.0f, f.v2, 0.0f
+        });
+    }
+
+    cl_mem accelStructBuf = buildAccelStruct(ctx, nodeList, faceRefList, deviceTriangleList);
     triangleHit(ctx, accelStructBuf);
 
     // directGen();
@@ -51,11 +60,11 @@ int main()
 cl_mem buildAccelStruct(CLContext* ctx,
     const std::vector<DeviceBVHNode>& nodeList,
     const std::vector<unsigned int>& faceRefList,
-    const std::vector<Triangle>& triangleList)
+    const std::vector<DeviceTriangle>& deviceTriangleList)
 {
     unsigned int nodeListSize = nodeList.size() * sizeof(DeviceBVHNode),
-                 faceRefListSize = faceRefList.size() * sizeof(unsigned int),
-                 triListSize = triangleList.size() * sizeof(Triangle);
+                 triListSize = deviceTriangleList.size() * sizeof(DeviceTriangle),
+                 faceRefListSize = faceRefList.size() * sizeof(unsigned int);
     
     // header size + data size
     unsigned int bufferSizeByte = sizeof(AccelStruct) +
@@ -64,10 +73,10 @@ cl_mem buildAccelStruct(CLContext* ctx,
 #ifndef NDEBUG
     printf("DeviceBVHNode size: %ld\n\t %ld elements\n\t array bytes: %u\n",
         sizeof(DeviceBVHNode), nodeList.size(), nodeListSize);
+    printf("Triangle size: %ld\n\t %ld elements\n\t array bytes: %u\n",
+        sizeof(DeviceTriangle), deviceTriangleList.size(), triListSize);
     printf("FaceRef (unsigned int) size: %ld\n\t %ld elements\n\t array bytes: %u\n",
         sizeof(unsigned int), faceRefList.size(), faceRefListSize);
-    printf("Triangle size: %ld\n\t %ld elements\n\t array bytes: %u\n",
-        sizeof(Triangle), triangleList.size(), triListSize);
     printf("AccelStruct header size: %lu\n", sizeof(AccelStruct));
     printf("Total AccelStruct data size: %u\n", bufferSizeByte);
 #endif
@@ -77,8 +86,8 @@ cl_mem buildAccelStruct(CLContext* ctx,
 
     AccelStruct accelStruct = {
         .nodeByteOffset = (unsigned)sizeof(AccelStruct),
-        .faceRefByteOffset = (unsigned)sizeof(AccelStruct) + nodeListSize,
-        .faceByteOffset = (unsigned)sizeof(AccelStruct) + nodeListSize + faceRefListSize
+        .faceByteOffset = (unsigned)sizeof(AccelStruct) + nodeListSize,
+        .faceRefByteOffset = (unsigned)sizeof(AccelStruct) + nodeListSize + triListSize,
     };
 
     CL_CHECK(clEnqueueWriteBuffer(ctx->commandQueue, accelStructBuf, CL_TRUE,
@@ -88,10 +97,10 @@ cl_mem buildAccelStruct(CLContext* ctx,
         accelStruct.nodeByteOffset, nodeListSize, nodeList.data(),
         0, NULL, NULL));
     CL_CHECK(clEnqueueWriteBuffer(ctx->commandQueue, accelStructBuf, CL_TRUE,
-        accelStruct.faceRefByteOffset, faceRefListSize, faceRefList.data(),
+        accelStruct.faceByteOffset, triListSize, deviceTriangleList.data(),
         0, NULL, NULL));
     CL_CHECK(clEnqueueWriteBuffer(ctx->commandQueue, accelStructBuf, CL_TRUE,
-        accelStruct.faceByteOffset, triListSize, triangleList.data(),
+        accelStruct.faceRefByteOffset, faceRefListSize, faceRefList.data(),
         0, NULL, NULL));
 
     return accelStructBuf;
@@ -174,8 +183,10 @@ bool modelLoader(
 
 int triangleHit(CLContext* ctx, cl_mem& accelStructBuf)
 {
-    const size_t WIDTH = 720;
-    const size_t HEIGHT = 720;
+    const size_t WIDTH = 1920;
+    const size_t HEIGHT = 1080;
+    // const size_t WIDTH = 20;
+    // const size_t HEIGHT = 20;
     const size_t CHANNEL = 4;
 
     unsigned int extent[2] = {WIDTH, HEIGHT};
@@ -257,8 +268,8 @@ int directGen()
     const size_t CHANNEL = 4;
     AccelStruct accelStruct = {
         .nodeByteOffset = 1,
-        .faceRefByteOffset = 2,
-        .faceByteOffset = 3
+        .faceByteOffset = 2,
+        .faceRefByteOffset = 3
     };
     unsigned int extent[2] = {WIDTH, HEIGHT};
     uint8_t* image = (uint8_t*)malloc(WIDTH * HEIGHT * CHANNEL);
