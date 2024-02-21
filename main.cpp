@@ -183,7 +183,7 @@ bool modelLoader(
 
 int triangleHit(CLContext* ctx, cl_mem& accelStructBuf)
 {
-    const size_t WIDTH = 1920;
+    const size_t WIDTH = 1080;
     const size_t HEIGHT = 1080;
     // const size_t WIDTH = 20;
     // const size_t HEIGHT = 20;

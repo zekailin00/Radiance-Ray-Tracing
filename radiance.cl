@@ -47,68 +47,23 @@ struct Triangle
 struct HitData
 {
     float3 hitPoint;
+    float3 normal;
     unsigned int primitiveIndex;        // Bottom-level triangle index (gl_PrimitiveID)
     unsigned int instanceIndex;         // Top-level instance index (gl_InstanceID)
     unsigned int instanceCustomIndex;   // Top-level instance custom index (gl_InstanceCustomIndexEXT)
 };
 
-// https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
+/* User defined begin */
+struct Payload;
+void hit (struct Payload* payload, struct HitData* hitData);
+void miss(struct Payload* ray);
+/* User defined end */
+
+
 bool intersectTriangle(float3 origin, float3 direction, 
                        const struct Triangle* triangle,
-                       float3* intersectPoint, float* distance)
-{
-    float3 edge1 = triangle->v1.xyz - triangle->v0.xyz;
-    float3 edge2 = triangle->v2.xyz - triangle->v0.xyz;
-
-    float3 ray_cross_e2 = cross(direction, edge2);
-    float det = dot(edge1, ray_cross_e2);
-
-    if (det > -FLT_EPSILON && det < FLT_EPSILON)
-        return false;    // This ray is parallel to this triangle.
-
-    float inv_det = 1.0 / det;
-    float3 s = origin - triangle->v0.xyz;
-    float u = inv_det * dot(s, ray_cross_e2);
-
-    float3 s_cross_e1 = cross(s, edge1);
-    float v = inv_det * dot(direction, s_cross_e1);
-
-    // At this stage we can compute t to find out where the intersection point is on the line.
-    float t = inv_det * dot(edge2, s_cross_e1);
-
-
-    if (u < 0 || u > 1)
-        return false;
-
-    if (v < 0 || u + v > 1)
-        return false;
-
-    if (t > FLT_EPSILON) // ray intersection
-    {
-        *distance = t;
-        *intersectPoint = origin + direction * t;
-        return true;
-    }
-    else // This means that there is a line intersection but not a ray intersection.
-        return false;
-}
-
-// https://gist.github.com/DomNomNom/46bb1ce47f68d255fd5d
-bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax)
-{
-
-    float3 tMin = (boxMin - rayOrigin) / rayDir;
-    float3 tMax = (boxMax - rayOrigin) / rayDir;
-    float3 t1 = min(tMin, tMax);
-    float3 t2 = max(tMin, tMax);
-    float tNear = max(max(t1.x, t1.y), t1.z);
-    float tFar = min(min(t2.x, t2.y), t2.z);
-
-    if (tFar > max(tNear, 0.0f))
-        return true;
-    
-    return false;
-};
+                       float3* intersectPoint, float* distance);
+bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax);
 
 #define TO_BVH_NODE(accelStruct) (struct BVHNode*)(((char*)accelStruct) + accelStruct->nodeByteOffset)
 #define TO_FACE_REF(accelStruct) (unsigned int*)(((char*)accelStruct) + accelStruct->faceRefByteOffset)
@@ -190,13 +145,74 @@ bool intersect(
 			}
 		}
 	}
+
+    if (bestFaceIndex != -1)
+    {
+        struct Triangle* face = faceList + bestFaceIndex;
+        hitData->normal = (normalize(cross(face->v1.xyz - face->v0.xyz, face->v2.xyz - face->v0.xyz)));
+    }
+
     hitData->hitPoint = hitPoint;
     hitData->primitiveIndex = bestFaceIndex;
 	return bestFaceIndex != -1;
 }
 
-void hit (struct Payload* payload, struct HitData* hitData);
-void miss(struct Payload* ray);
+// https://gist.github.com/DomNomNom/46bb1ce47f68d255fd5d
+bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax)
+{
+    float3 tMin = (boxMin - rayOrigin) / rayDir;
+    float3 tMax = (boxMax - rayOrigin) / rayDir;
+    float3 t1 = min(tMin, tMax);
+    float3 t2 = max(tMin, tMax);
+    float tNear = max(max(t1.x, t1.y), t1.z);
+    float tFar = min(min(t2.x, t2.y), t2.z);
+
+    if (tFar > max(tNear, 0.0f))
+        return true;
+    
+    return false;
+}
+
+// https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
+bool intersectTriangle(float3 origin, float3 direction, 
+                       const struct Triangle* triangle,
+                       float3* intersectPoint, float* distance)
+{
+    float3 edge1 = triangle->v1.xyz - triangle->v0.xyz;
+    float3 edge2 = triangle->v2.xyz - triangle->v0.xyz;
+
+    float3 ray_cross_e2 = cross(direction, edge2);
+    float det = dot(edge1, ray_cross_e2);
+
+    if (det > -FLT_EPSILON && det < FLT_EPSILON)
+        return false;    // This ray is parallel to this triangle.
+
+    float inv_det = 1.0 / det;
+    float3 s = origin - triangle->v0.xyz;
+    float u = inv_det * dot(s, ray_cross_e2);
+
+    float3 s_cross_e1 = cross(s, edge1);
+    float v = inv_det * dot(direction, s_cross_e1);
+
+    // At this stage we can compute t to find out where the intersection point is on the line.
+    float t = inv_det * dot(edge2, s_cross_e1);
+
+
+    if (u < 0 || u > 1)
+        return false;
+
+    if (v < 0 || u + v > 1)
+        return false;
+
+    if (t > FLT_EPSILON) // ray intersection
+    {
+        *distance = t;
+        *intersectPoint = origin + direction * t;
+        return true;
+    }
+    else // This means that there is a line intersection but not a ray intersection.
+        return false;
+}
 
 //!raygen 
 void traceRay(

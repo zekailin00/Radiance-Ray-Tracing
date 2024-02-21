@@ -18,13 +18,13 @@ __kernel void raygen(
 
     int x = work_item_id % (int)extent[0]; /* x-coordinate of the pixel */
     int y = work_item_id / (int)extent[0]; /* y-coordinate of the pixel */
-    float fx = (float)x / (float)extent[0]; /* convert int to float in range [0-1] */
-    float fy = (float)y / (float)extent[1]; /* convert int to float in range [0-1] */
+    float fx = ((float)x / (float)extent[0]); /* convert int to float in range [0-1] */
+    float fy = ((float)y / (float)extent[1]); /* convert int to float in range [0-1] */
 
-    float f0 = 1; // focal length
-    float3 direction = {fx, fy, f0};
+    float f0 = 2; // focal length
+    float3 direction = {fx - 0.5, fy - 0.5f, f0};
     direction = normalize(direction);
-    float3 origin = {-1.0, -1.0, -2};
+    float3 origin = {0.0f, 0.0f, -1.0};
 
     struct Payload payload;
     payload.x = (int)(fx * 256);
@@ -46,9 +46,15 @@ __kernel void raygen(
 
 void hit(struct Payload* payload, struct HitData* hitData)
 {
-    payload->color[0] = 255;
-    payload->color[1] = 0;
-    payload->color[2] = 0;
+    if (hitData->normal.x < 0.0f)
+        hitData->normal.x *= -1.0;
+    if (hitData->normal.y < 0.0f)
+        hitData->normal.y *= -1.0;
+    if (hitData->normal.z < 0.0f)
+        hitData->normal.z *= -1.0;
+    payload->color[0] = (unsigned int)(hitData->normal.x * 255);
+    payload->color[1] = (unsigned int)(hitData->normal.y * 255);
+    payload->color[2] = (unsigned int)(hitData->normal.z * 255);
     payload->hit = true;
 }
 
