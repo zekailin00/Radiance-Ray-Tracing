@@ -4,40 +4,21 @@
 #include <assimp/scene.h>           // Output data structure
 #include <assimp/postprocess.h>     // Post processing flags
 
+#include <list>
+#include <vector>
 
-struct Triangle {
 
-    unsigned int index;
+namespace RD
+{
 
-    // bounding box
-	float _bottom[3];
-	float _top[3];
-
-    // indexes in vertices array
-	unsigned _idx0;
-	unsigned _idx1;
-	unsigned _idx2;
-
-    aiVector3f v0;
-    aiVector3f v1;
-    aiVector3f v2;
-
-    aiVector3f _normal;
-
-	// // RGB Color Vector3Df 
-	// Vector3Df _colorf;
-	// // Center point
-	// Vector3Df _center;
-	// // triangle normal
-	// Vector3Df _normal;
-	// // ignore back-face culling flag
-	// bool _twoSided;
-	// // Raytracing intersection pre-computed cache:
-	// float _d, _d1, _d2, _d3;
-	// Vector3Df _e1, _e2, _e3;
+struct Triangle
+{
+	unsigned int idx0;
+	unsigned int idx1;
+	unsigned int idx2;
 };
 
-struct AccelStruct // mapped
+struct AccelStructHeader // mapped
 {
     unsigned int nodeByteOffset;
     unsigned int faceByteOffset;
@@ -90,3 +71,5 @@ struct DeviceTriangle // mapped
     aiVector3f v2;
     float _2;
 };
+
+} // namespace RD

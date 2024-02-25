@@ -6,21 +6,24 @@ find_package(OpenCL REQUIRED)
 add_subdirectory(external/assimp)
 add_subdirectory(external/glad)
 
-add_executable(example
-    main.cpp
-)
+add_subdirectory(radiance)
+add_subdirectory(samples)
 
-target_include_directories(example PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    external
-    .
-    # external/assimp/include
-)
+# add_executable(example
+#     main.cpp
+# )
 
-target_link_libraries(example
-    ${OpenCL_LIBRARY}
-    assimp
-)
+# target_include_directories(example PUBLIC
+#     ${CMAKE_CURRENT_SOURCE_DIR}
+#     external
+#     .
+#     # external/assimp/includeb
+# )
+
+# target_link_libraries(example
+#     ${OpenCL_LIBRARY}
+#     assimp
+# )
 # set(OpenGL_GL_PREFERENCE "GLVND")
 # find_package(OpenGL REQUIRED)
 # find_package(glfw3 REQUIRED)

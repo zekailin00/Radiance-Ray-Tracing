@@ -8,6 +8,8 @@
 #include <chrono>
 #include <sys/stat.h>
 
+namespace RD
+{
 
 struct CLContext
 {
@@ -144,3 +146,5 @@ static int read_kernel_file_str(const char* filename, char** data, size_t* size)
   
   return 0;
 }
+
+} // namespace RD

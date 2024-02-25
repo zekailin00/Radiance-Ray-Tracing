@@ -2,6 +2,8 @@
 
 #include "core.h"
 
+namespace RD
+{
 
 static void calculateSurfaceNormal(aiVector3f& norm,
     const aiVector3f& v1, const aiVector3f& v2, const aiVector3f& v3)
@@ -36,3 +38,5 @@ static void maxVec3(aiVector3f& out, const aiVector3f& v0, const aiVector3f& v1)
     out[1] = v0[1] > v1[1]? v0[1]: v1[1];
     out[2] = v0[2] > v1[2]? v0[2]: v1[2];   
 }
+
+} // namespace RD

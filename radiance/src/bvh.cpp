@@ -1,13 +1,11 @@
-#pragma once
+#include "bvh.h"
 
 #include <cfloat>
-#include <list>
-#include <vector>
 
-#include "core.h"
 #include "linalg.h"
 
-
+namespace RD
+{
 //https://github.com/straaljager/GPU-path-tracing-with-CUDA-tutorial-3
 
 // report progress during BVH construction
@@ -21,28 +19,6 @@
 #endif
 unsigned g_reportCounter = 0;
 
-#define MAX_LEAF_PRIM_SIZE 4
-
-
-struct BVHNode
-{
-	aiVector3f _bottom;
-	aiVector3f _top;
-	virtual bool IsLeaf() = 0; // pure virtual
-};
-
-struct BVHInner : BVHNode
-{
-	BVHNode *_left;
-	BVHNode *_right;
-	virtual bool IsLeaf() { return false; }
-};
-
-struct BVHLeaf : BVHNode
-{
-	std::list<const Triangle*> _triangles;
-	virtual bool IsLeaf() { return true; }
-};
 
 struct BBoxTmp
 {
@@ -307,6 +283,7 @@ BVHNode *Recurse(BBoxEntries& work, REPORTPRM(float pct = 0.) int depth = 0)
 	return inner;
 }  // end of Recurse() function, returns the rootnode (when all recursion calls have finished)
 
+
 BVHNode *CreateBVH(const std::vector<aiVector3f>& vertices, const std::vector<Triangle>& triangles)
 {
 	/* Summary:
@@ -333,14 +310,14 @@ BVHNode *CreateBVH(const std::vector<aiVector3f>& vertices, const std::vector<Tr
 		b._pTri = &triangle;  
 
 		// loop over triangle vertices and pick smallest vertex for bottom of triangle bbox
-		minVec3(b._bottom, b._bottom, vertices[triangle._idx0]);  // index of vertex
-		minVec3(b._bottom, b._bottom, vertices[triangle._idx1]);
-		minVec3(b._bottom, b._bottom, vertices[triangle._idx2]);
+		minVec3(b._bottom, b._bottom, vertices[triangle.idx0]);  // index of vertex
+		minVec3(b._bottom, b._bottom, vertices[triangle.idx1]);
+		minVec3(b._bottom, b._bottom, vertices[triangle.idx2]);
 
 		// loop over triangle vertices and pick largest vertex for top of triangle bbox
-		maxVec3(b._top, b._top, vertices[triangle._idx0]);
-		maxVec3(b._top, b._top, vertices[triangle._idx1]);
-		maxVec3(b._top, b._top, vertices[triangle._idx2]);
+		maxVec3(b._top, b._top, vertices[triangle.idx0]);
+		maxVec3(b._top, b._top, vertices[triangle.idx1]);
+		maxVec3(b._top, b._top, vertices[triangle.idx2]);
 
 		// expand working list bbox by largest and smallest triangle bbox bounds
 		minVec3(bottom, bottom, b._bottom);
@@ -462,3 +439,5 @@ void CreateDeviceBVH(BVHNode* root, const std::vector<Triangle>& faces,
 	CountDepth(root, 0, maxDepth);
 	printf("Max BVH depth is %d\n", maxDepth);
 }
+
+} // namespace RD

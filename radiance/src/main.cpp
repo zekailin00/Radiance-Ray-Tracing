@@ -150,31 +150,31 @@ bool modelLoader(
 
         triangles[i].index = i;
 
-        triangles[i]._idx0 = mesh->mFaces[i].mIndices[0];
-        triangles[i]._idx1 = mesh->mFaces[i].mIndices[1];
-        triangles[i]._idx2 = mesh->mFaces[i].mIndices[2];
-        triangles[i].v0 = vertices[triangles[i]._idx0];
-        triangles[i].v1 = vertices[triangles[i]._idx1];
-        triangles[i].v2 = vertices[triangles[i]._idx2];
+        triangles[i].idx0 = mesh->mFaces[i].mIndices[0];
+        triangles[i].idx1 = mesh->mFaces[i].mIndices[1];
+        triangles[i].idx2 = mesh->mFaces[i].mIndices[2];
+        triangles[i].v0 = vertices[triangles[i].idx0];
+        triangles[i].v1 = vertices[triangles[i].idx1];
+        triangles[i].v2 = vertices[triangles[i].idx2];
 
         calculateSurfaceNormal(triangles[i]._normal,
-            vertices[triangles[i]._idx0],
-            vertices[triangles[i]._idx1],
-            vertices[triangles[i]._idx2]
+            vertices[triangles[i].idx0],
+            vertices[triangles[i].idx1],
+            vertices[triangles[i].idx2]
         );
 
         aiVector3f tmp;
-        minVec3(tmp, vertices[triangles[i]._idx0], vertices[triangles[i]._idx1]);
-        minVec3(tmp, tmp, vertices[triangles[i]._idx2]);
-        triangles[i]._bottom[0] = tmp[0];
-        triangles[i]._bottom[1] = tmp[1];
-        triangles[i]._bottom[2] = tmp[2];
+        minVec3(tmp, vertices[triangles[i].idx0], vertices[triangles[i].idx1]);
+        minVec3(tmp, tmp, vertices[triangles[i].idx2]);
+        // triangles[i]._bottom[0] = tmp[0];
+        // triangles[i]._bottom[1] = tmp[1];
+        // triangles[i]._bottom[2] = tmp[2];
 
-        maxVec3(tmp, vertices[triangles[i]._idx0], vertices[triangles[i]._idx1]);
-        maxVec3(tmp, tmp, vertices[triangles[i]._idx2]);
-        triangles[i]._top[0] = tmp[0];
-        triangles[i]._top[1] = tmp[1];
-        triangles[i]._top[2] = tmp[2];
+        maxVec3(tmp, vertices[triangles[i].idx0], vertices[triangles[i].idx1]);
+        maxVec3(tmp, tmp, vertices[triangles[i].idx2]);
+        // triangles[i]._top[0] = tmp[0];
+        // triangles[i]._top[1] = tmp[1];
+        // triangles[i]._top[2] = tmp[2];
     }
 
     return true;
