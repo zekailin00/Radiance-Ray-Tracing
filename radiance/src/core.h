@@ -11,6 +11,10 @@
 namespace RD
 {
 
+typedef aiVector2t<float> Vec2;
+typedef aiVector3f Vec3;
+typedef aiMatrix4x4 Mat4x4;
+
 struct Triangle
 {
 	unsigned int idx0;
@@ -26,6 +30,31 @@ struct AccelStructHeader // mapped
     unsigned int _; // alignment
 };
 
+
+struct AccelStructTop // 1 block mapped
+{
+    unsigned int type;
+    unsigned int nodeByteOffset;
+    unsigned int instByteOffset;
+    unsigned int topASSize;
+};
+
+struct AccelStructBottom // 1 block mapped
+{
+    unsigned int type;
+    unsigned int nodeByteOffset;
+    unsigned int faceByteOffset;
+    unsigned int vertexOffset;
+};
+
+struct DeviceInstance
+{
+    Mat4x4 transform;
+    unsigned int SBTOffset;
+    unsigned int instanceID;
+    unsigned int customInstanceID;
+    unsigned int bottomAccelStructOffset;
+};
 
 struct DeviceBVHNode // mapped
 {
@@ -44,32 +73,31 @@ struct DeviceBVHNode // mapped
 		struct {
 			unsigned _idxLeft;
 			unsigned _idxRight;
+            unsigned int _2, _3;
 		} inner;
 		// leaf node: stores triangle count and starting index in triangle list
 		struct {
 			unsigned _count; // Top-most bit set, leafnode if set, innernode otherwise
-			unsigned _startIndexInTriIndexList;
+			unsigned _startIndexList;
+            unsigned int _type;
+            unsigned int _3;
 		} leaf;
-	} node;
 
-    unsigned int _2, _3;
+	} node;
 };
 
 
 struct DeviceTriangle // mapped
 {
-    // FIXME: use indices for optimization
-    // // indexes in vertices array
-	// unsigned _idx0;
-	// unsigned _idx1;
-	// unsigned _idx2;
+	unsigned int idx0;
+	unsigned int idx1;
+	unsigned int idx2;
+    unsigned int primID;
+};
 
-    aiVector3f v0;
-    float _0;
-    aiVector3f v1;
-    float _1;
-    aiVector3f v2;
-    float _2;
+struct DeviceVertex // mapped
+{
+    float x, y, z, w;
 };
 
 } // namespace RD

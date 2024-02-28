@@ -69,25 +69,121 @@ int main()
     /* Intialize platform */
     RD::Platform* plt = RD::Platform::GetPlatform();
 
-    /* Load mesh */
-    RD::Mesh mesh;
-    modelLoader(mesh.vertexData, mesh.indexData, modelFile);
-
-    /* Define pipeline data inputs and build accel struct */
-    RD::AccelStruct rdAccelStruct = RD::BuildAccelStruct(plt, mesh);
-    RD::Buffer rdImage            = RD::CreateImage(plt, extent[0], extent[1]);
-    RD::Buffer rdExtent           = RD::CreateBuffer(plt, sizeof(extent));
-    RD::WriteBuffer(plt, rdExtent, sizeof(extent), extent);
-
     /* Build shader module */
     char* shaderCode;
     size_t shaderSize;
     RD::read_kernel_file_str(shaderPath.c_str(), &shaderCode, &shaderSize);
     RD::ShaderModule shader = RD::CreateShaderModule(plt, shaderCode, shaderSize, "functName..");
 
+    /* Load mesh and build accel struct */
+    RD::Mesh mesh;
+    modelLoader(mesh.vertexData, mesh.indexData, modelFile);
+    RD::BottomAccelStruct rdBottomAS = RD::BuildAccelStruct(plt, mesh);
+
+    std::vector<RD::Instance> instanceList =
+    {
+        {
+            {
+                {1.0f, 1.0f, 1.0f}, // scaling
+                aiQuaterniont<float>(), // rotation
+                {0.0f, 0.0f, 0.0f} // position
+            }, // transform
+            0, // SBT offset
+            10, // customInstanceID
+            rdBottomAS // accelStruct handle
+        },
+        {
+            {
+                {1.0f, 1.0f, 1.0f}, // scaling
+                aiQuaterniont<float>(), // rotation
+                {0.0f, -.1f, 0.0f} // position
+            }, // transform
+            0, // SBT offset
+            40, // customInstanceID
+            rdBottomAS // accelStruct handle
+        },
+        {
+            {
+                {1.0f, 1.0f, 1.0f}, // scaling
+                aiQuaterniont<float>(), // rotation
+                {0.0f, -.2f, 0.0f} // position
+            }, // transform
+            0, // SBT offset
+            70, // customInstanceID
+            rdBottomAS // accelStruct handle
+        }, 
+        {
+            {
+                {1.0f, 1.0f, 1.0f}, // scaling
+                aiQuaterniont<float>(), // rotation
+                {0.1f, 0.0f, 0.0f} // position
+            }, // transform
+            0, // SBT offset
+            100, // customInstanceID
+            rdBottomAS // accelStruct handle
+        },
+        {
+            {
+                {1.0f, 1.0f, 1.0f}, // scaling
+                aiQuaterniont<float>(), // rotation
+                {0.1f, -.1f, 0.0f} // position
+            }, // transform
+            0, // SBT offset
+            130, // customInstanceID
+            rdBottomAS // accelStruct handle
+        },
+        {
+            {
+                {1.0f, 1.0f, 1.0f}, // scaling
+                aiQuaterniont<float>(), // rotation
+                {0.1f, -.2f, 0.0f} // position
+            }, // transform
+            0, // SBT offset
+            160, // customInstanceID
+            rdBottomAS // accelStruct handle
+        }, 
+        {
+            {
+                {1.0f, 1.0f, 1.0f}, // scaling
+                aiQuaterniont<float>(), // rotation
+                {-0.1f, 0.0f, 0.0f} // position
+            }, // transform
+            0, // SBT offset
+            190, // customInstanceID
+            rdBottomAS // accelStruct handle
+        },
+        {
+            {
+                {1.0f, 1.0f, 1.0f}, // scaling
+                aiQuaterniont<float>(), // rotation
+                {-0.1f, -.1f, 0.0f} // position
+            }, // transform
+            0, // SBT offset
+            220, // customInstanceID
+            rdBottomAS // accelStruct handle
+        },
+        {
+            {
+                {1.0f, 1.0f, 1.0f}, // scaling
+                aiQuaterniont<float>(), // rotation
+                {-0.1f, -.2f, 0.0f} // position
+            }, // transform
+            0, // SBT offset
+            250, // customInstanceID
+            rdBottomAS // accelStruct handle
+        }
+    };
+
+    RD::TopAccelStruct rdTopAS = RD::BuildAccelStruct(plt, instanceList);
+
+    /* Define pipeline data inputs */
+    RD::Buffer rdImage            = RD::CreateImage(plt, extent[0], extent[1]);
+    RD::Buffer rdExtent           = RD::CreateBuffer(plt, sizeof(extent));
+    RD::WriteBuffer(plt, rdExtent, sizeof(extent), extent);
+
     /* Build and configure pipeline */
     RD::DescriptorSet descSet = RD::CreateDescriptorSet(
-        {rdImage, rdExtent, rdAccelStruct});
+        {rdImage, rdExtent, rdTopAS});
     RD::PipelineLayout layout = RD::CreatePipelineLayout(
         {RD::IMAGE_TYPE, RD::BUFFER_TYPE, RD::ACCEL_STRUCT_TYPE});
     RD::Pipeline pipeline     = RD::CreatePipeline({

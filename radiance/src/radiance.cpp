@@ -1,39 +1,60 @@
 #include "radiance.h"
 #include "bvh.h"
 
+
 namespace RD
 {
 
-cl_mem _buildAccelStruct(CLContext* ctx,
+void _buildBottomAccelStruct(CLContext* ctx,
     const std::vector<DeviceBVHNode>& nodeList,
-    const std::vector<unsigned int>& faceRefList,
-    const std::vector<DeviceTriangle>& deviceTriangleList);
+    const std::vector<DeviceTriangle>& faceList,
+    const std::vector<Vec3>& vertexList,
+    std::vector<char>& data);
 
-AccelStruct BuildAccelStruct(Platform* platform, Mesh& mesh)
+TopAccelStruct _buildTopAccelStruct(CLContext* ctx,
+    const std::vector<DeviceBVHNode>& nodeList,
+    const std::vector<DeviceInstance>& deviceInstList,
+    const std::vector<Instance>& instList,
+    const std::map<BottomAccelStruct, unsigned int>& instOffsetMap);
+
+BottomAccelStruct BuildAccelStruct(Platform* platform, Mesh& mesh)
 {
     CLContext* ctx = platform->clContext;
     BVHNode* root = CreateBVH(mesh.vertexData, mesh.indexData);
 
-    std::vector<unsigned int> faceRefList;
-    std::vector<DeviceBVHNode> nodeList;
-    CreateDeviceBVH(root, mesh.indexData, faceRefList, nodeList);
+    _BottomAccelStruct* accelStruct = new _BottomAccelStruct();
+    accelStruct->root = root;
 
-    printf("face ref list size: %ld\n", faceRefList.size());
+    std::vector<DeviceTriangle> deviceTrigList;
+    std::vector<DeviceBVHNode> nodeList;
+    CreateDeviceBVH(root, mesh.indexData, deviceTrigList, nodeList);
+
+    printf("device face list size: %ld\n", deviceTrigList.size());
     printf("node list size: %ld\n", nodeList.size());
 
-    std::vector<DeviceTriangle> deviceTriangleList;
-    for (const Triangle& f: mesh.indexData)
-    {
-        //FIXME:
-        deviceTriangleList.push_back({
-            mesh.vertexData[f.idx0], 0.0f,
-            mesh.vertexData[f.idx1], 0.0f,
-            mesh.vertexData[f.idx2], 0.0f
-        });
-    }
+    _buildBottomAccelStruct(ctx, nodeList, deviceTrigList,
+        mesh.vertexData, accelStruct->data);
+    return accelStruct;
+}
 
-    cl_mem accelStructBuf = _buildAccelStruct(ctx, nodeList, faceRefList, deviceTriangleList);
-    return accelStructBuf;
+TopAccelStruct BuildAccelStruct(Platform* platform, std::vector<Instance>& instances)
+{
+    CLContext* ctx = platform->clContext;
+    BVHNode* root = CreateBVH(instances);
+
+    std::vector<DeviceInstance> deviceInstList;
+    std::vector<DeviceBVHNode> nodeList;
+    std::map<BottomAccelStruct, unsigned int> instOffsetList;
+    CreateDeviceBVH(root, instances, deviceInstList, nodeList, instOffsetList);
+
+    printf("device instance list size: %ld\n", deviceInstList.size());
+    printf("node list size: %ld\n", nodeList.size());
+    printf("Instance offset list size: %ld\n", instOffsetList.size());
+
+    TopAccelStruct topAccelStruct = _buildTopAccelStruct(ctx,
+        nodeList, deviceInstList, instances, instOffsetList);
+
+    return topAccelStruct;
 }
 
 Image CreateImage(Platform* platform, unsigned int width, unsigned int height)
@@ -200,6 +221,115 @@ cl_mem _buildAccelStruct(CLContext* ctx,
     CL_CHECK(clEnqueueWriteBuffer(ctx->commandQueue, accelStructBuf, CL_TRUE,
         accelStruct.faceRefByteOffset, faceRefListSize, faceRefList.data(),
         0, NULL, NULL));
+
+    return accelStructBuf;
+}
+
+void _buildBottomAccelStruct(CLContext* ctx,
+    const std::vector<DeviceBVHNode>& nodeList,
+    const std::vector<DeviceTriangle>& faceList,
+    const std::vector<Vec3>& vertexList,
+    std::vector<char>& data)
+{
+    unsigned int nodeListSize = nodeList.size() * sizeof(DeviceBVHNode),
+                 faceListSize = faceList.size() * sizeof(DeviceTriangle),
+                 vertexListSize = vertexList.size() * sizeof(DeviceVertex);
+    
+    // header size + data size
+    unsigned int bufferSizeByte = sizeof(AccelStructBottom) +
+        nodeListSize + faceListSize + vertexListSize;
+
+#ifndef NDEBUG
+    printf("DeviceBVHNode size: %ld\n\t %ld elements\n\t array bytes: %u\n",
+        sizeof(DeviceBVHNode), nodeList.size(), nodeListSize);
+    printf("Triangle size: %ld\n\t %ld elements\n\t array bytes: %u\n",
+        sizeof(DeviceTriangle), faceList.size(), faceListSize);
+    printf("Vertex size: %ld\n\t %ld elements\n\t array bytes: %u\n",
+        sizeof(DeviceVertex), vertexList.size(), vertexListSize);
+    printf("AccelStruct header size: %lu\n", sizeof(AccelStructBottom));
+    printf("Total AccelStruct data size: %u\n", bufferSizeByte);
+#endif
+
+    data.resize(bufferSizeByte);
+
+    AccelStructBottom accelStruct = {
+        .type           = TYPE_BOT_AS,
+        .nodeByteOffset = sizeof(AccelStructBottom),
+        .faceByteOffset = (unsigned int) sizeof(AccelStructBottom) + nodeListSize,
+        .vertexOffset   = (unsigned int) sizeof(AccelStructBottom) + nodeListSize + faceListSize,
+    };
+
+    char* ptr = data.data();
+    memcpy(ptr, &accelStruct, sizeof(AccelStructBottom));
+    memcpy(ptr + accelStruct.nodeByteOffset, nodeList.data(), nodeListSize);
+    memcpy(ptr + accelStruct.faceByteOffset, faceList.data(), faceListSize);
+    DeviceVertex* pVertex = (DeviceVertex*)(ptr + accelStruct.vertexOffset);
+    for (int i = 0; i < vertexList.size(); i++)
+    {
+        DeviceVertex* ptr = pVertex + i;
+        ptr->x = vertexList[i].x;
+        ptr->y = vertexList[i].y;
+        ptr->z = vertexList[i].z;
+    }
+}
+
+TopAccelStruct _buildTopAccelStruct(CLContext* ctx,
+    const std::vector<DeviceBVHNode>& nodeList,
+    const std::vector<DeviceInstance>& deviceInstList,
+    const std::vector<Instance>& instList,
+    const std::map<BottomAccelStruct, unsigned int>& instOffsetMap)
+{
+    unsigned int nodeListSize = nodeList.size() * sizeof(DeviceBVHNode),
+                 deviceInstListSize = deviceInstList.size() * sizeof(DeviceInstance),
+                 instanceTotalSize = 0;
+
+    for (auto it = instOffsetMap.begin(); it != instOffsetMap.end(); it++)
+    {
+        instanceTotalSize += it->first->data.size();
+    }
+
+    // header size + data size
+    unsigned int bufferSizeByte = sizeof(AccelStructTop) +
+        nodeListSize + deviceInstListSize + instanceTotalSize;
+
+#ifndef NDEBUG
+    printf("DeviceBVHNode size: %ld\n\t %ld elements\n\t array bytes: %u\n",
+        sizeof(DeviceBVHNode), nodeList.size(), nodeListSize);
+    printf("Device instance size: %ld\n\t %ld elements\n\t array bytes: %u\n",
+        sizeof(DeviceInstance), deviceInstList.size(), deviceInstListSize);
+    printf("Instance data size: %ld\n\t %ld elements\n\t array bytes: %u\n",
+        sizeof(BottomAccelStruct), instOffsetMap.size(), instanceTotalSize);
+    printf("AccelStruct header size: %lu\n", sizeof(AccelStructTop));
+    printf("Total AccelStruct data size: %u\n", bufferSizeByte);
+#endif
+
+    cl_mem accelStructBuf = CL_CHECK2(clCreateBuffer(
+        ctx->context, CL_MEM_READ_WRITE, bufferSizeByte, NULL, &_err));
+
+    AccelStructTop accelStruct = {
+        .type           = TYPE_TOP_AS,
+        .nodeByteOffset = sizeof(AccelStructTop),
+        .instByteOffset = (unsigned int) sizeof(AccelStructTop) + nodeListSize,
+        .topASSize      = (unsigned int) sizeof(AccelStructTop) + nodeListSize + deviceInstListSize
+    };
+
+
+    CL_CHECK(clEnqueueWriteBuffer(ctx->commandQueue, accelStructBuf, CL_TRUE,
+        0, sizeof(accelStruct), &accelStruct,
+        0, NULL, NULL));
+    CL_CHECK(clEnqueueWriteBuffer(ctx->commandQueue, accelStructBuf, CL_TRUE,
+        accelStruct.nodeByteOffset, nodeListSize, nodeList.data(),
+        0, NULL, NULL));
+    CL_CHECK(clEnqueueWriteBuffer(ctx->commandQueue, accelStructBuf, CL_TRUE,
+        accelStruct.instByteOffset, deviceInstListSize, deviceInstList.data(),
+        0, NULL, NULL));
+    
+    for (auto &e: instOffsetMap)
+    {
+        CL_CHECK(clEnqueueWriteBuffer(ctx->commandQueue, accelStructBuf, CL_TRUE,
+            e.second, e.first->data.size(), e.first->data.data(),
+            0, NULL, NULL));
+    }
 
     return accelStructBuf;
 }

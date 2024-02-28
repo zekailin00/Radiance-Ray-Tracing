@@ -36,7 +36,7 @@ __kernel void raygen(
     traceRay(topLevel, origin, direction, 0.01, 100, &payload);
 
     const int CHANNEL = 4;
-    int index = work_item_id; //(int)(extent[0] * y + x);
+    int index = (int)(extent[0] * (extent[1] - y - 1) + (extent[0] - x - 1));
     image[CHANNEL * index + 0] = payload.color[0];
     image[CHANNEL * index + 1] = payload.color[1];
     image[CHANNEL * index + 2] = payload.color[2];
@@ -46,15 +46,10 @@ __kernel void raygen(
 
 void hit(struct Payload* payload, struct HitData* hitData)
 {
-    if (hitData->normal.x < 0.0f)
-        hitData->normal.x *= -1.0;
-    if (hitData->normal.y < 0.0f)
-        hitData->normal.y *= -1.0;
-    if (hitData->normal.z < 0.0f)
-        hitData->normal.z *= -1.0;
-    payload->color[0] = (unsigned int)(hitData->normal.x * 255);
-    payload->color[1] = (unsigned int)(hitData->normal.y * 255);
-    payload->color[2] = (unsigned int)(hitData->normal.z * 255);
+    payload->color[0] = (uchar)hitData->instanceCustomIndex;
+    payload->color[1] = (uchar)hitData->instanceCustomIndex;
+    payload->color[2] = (uchar)hitData->instanceCustomIndex;
+
     payload->hit = true;
 }
 

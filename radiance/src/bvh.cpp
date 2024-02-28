@@ -1,6 +1,7 @@
 #include "bvh.h"
 
 #include <cfloat>
+#include <cassert>
 
 #include "linalg.h"
 
@@ -28,13 +29,13 @@ struct BBoxTmp
     aiVector3f _top;
     // Center point, ie 0.5*(top-bottom)
     aiVector3f _center; // = bbox centroid
-    // Triangle
-    const Triangle *_pTri;  // triangle list
+
+    const void* _ptr;
     BBoxTmp()
         :
         _bottom(FLT_MAX, FLT_MAX, FLT_MAX),
         _top(-FLT_MAX, -FLT_MAX, -FLT_MAX),
-        _pTri(NULL)
+        _ptr(NULL)
     {}
 };
 
@@ -55,7 +56,7 @@ BVHNode *Recurse(BBoxEntries& work, REPORTPRM(float pct = 0.) int depth = 0)
 			
 		BVHLeaf *leaf = new BVHLeaf;
 		for (BBoxEntries::iterator it = work.begin(); it != work.end(); it++)
-			leaf->_triangles.push_back(it->_pTri);
+			leaf->_primitive.push_back(it->_ptr);
 		return leaf;
 		}
 
@@ -212,7 +213,7 @@ BVHNode *Recurse(BBoxEntries& work, REPORTPRM(float pct = 0.) int depth = 0)
 
 		BVHLeaf *leaf = new BVHLeaf;
 		for (BBoxEntries::iterator it = work.begin(); it != work.end(); it++)
-			leaf->_triangles.push_back(it->_pTri); // put triangles of working list in leaf's triangle list
+			leaf->_primitive.push_back(it->_ptr); // put triangles of working list in leaf's triangle list
 		return leaf;
 	}
 
@@ -307,7 +308,7 @@ BVHNode *CreateBVH(const std::vector<aiVector3f>& vertices, const std::vector<Tr
 
 		// create a new temporary bbox per triangle 
 		BBoxTmp b;
-		b._pTri = &triangle;  
+		b._ptr = &triangle;  
 
 		// loop over triangle vertices and pick smallest vertex for bottom of triangle bbox
 		minVec3(b._bottom, b._bottom, vertices[triangle.idx0]);  // index of vertex
@@ -329,6 +330,55 @@ BVHNode *CreateBVH(const std::vector<aiVector3f>& vertices, const std::vector<Tr
 		// add triangle bbox to working list
 		work.push_back(b);
 	}
+
+	// ...and pass it to the recursive function that creates the SAH AABB BVH
+	// (Surface Area Heuristic, Axis-Aligned Bounding Boxes, Bounding Volume Hierarchy)
+	
+	std::printf("Creating Bounding Volume Hierarchy data...    "); fflush(stdout);
+	BVHNode* root = Recurse(work); // builds BVH and returns root node
+	printf("\b\b\b100%%\n");
+
+	root->_bottom = bottom; // bottom is bottom of bbox bounding all triangles in the scene
+	root->_top = top;
+
+	return root;
+}
+
+BVHNode *CreateBVH(const std::vector<Instance>& instances)
+{
+	/* Summary:
+	1. Create work BBox
+	2. Create BBox for every triangle and compute bounds
+	3. Expand bounds work BBox to fit all triangle bboxes
+	4. Compute triangle bbox centre and add triangle to working list
+	5. Build BVH tree with Recurse()
+	6. Return root node
+	*/
+
+	std::vector<BBoxTmp> work;
+	aiVector3f bottom(FLT_MAX, FLT_MAX, FLT_MAX);
+	aiVector3f top(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+
+	puts("Gathering bounding box info from all triangles...");
+
+    for (const Instance& inst: instances)
+    {
+        std::vector<char>& meshData = inst.bottomAccelStruct->data;
+
+        AccelStructBottom* header = (AccelStructBottom*) meshData.data();
+        DeviceBVHNode* root = (DeviceBVHNode*) (meshData.data() + header->nodeByteOffset);
+        
+        BBoxTmp b;
+        b._top = root->_top;
+        b._bottom = root->_bottom;
+        b._center = (b._top + b._bottom) * 0.5f;
+        b._ptr = &inst;
+
+        minVec3(bottom, bottom, b._bottom);
+        maxVec3(top, top, b._top);
+        
+        work.push_back(b);
+    }
 
 	// ...and pass it to the recursive function that creates the SAH AABB BVH
 	// (Surface Area Heuristic, Axis-Aligned Bounding Boxes, Bounding Volume Hierarchy)
@@ -366,7 +416,7 @@ unsigned CountTriangles(BVHNode *root)
 	}
 	else {
 		BVHLeaf *p = dynamic_cast<BVHLeaf*>(root);
-		return (unsigned)p->_triangles.size();
+		return (unsigned)p->_primitive.size();
 	}
 }
 
@@ -386,7 +436,7 @@ void CountDepth(BVHNode *root, int depth, int& maxDepth)
 // Create a device side BVH
 void PopulateCacheFriendlyBVH(
 	const Triangle *pFirstTriangle, BVHNode *root, unsigned int& faceIdx, unsigned int& nodeIdx,
-    std::vector<unsigned int>& faceList, std::vector<DeviceBVHNode>& nodeList)
+    std::vector<DeviceTriangle>& faceList, std::vector<DeviceBVHNode>& nodeList)
 {
 	unsigned currNodeIdx = nodeIdx;
 	nodeList[currNodeIdx]._bottom = root->_bottom;
@@ -406,22 +456,27 @@ void PopulateCacheFriendlyBVH(
 
 	else { // leaf
 		BVHLeaf *p = dynamic_cast<BVHLeaf*>(root);
-		unsigned count = (unsigned)p->_triangles.size();
+		unsigned count = p->_primitive.size();
 		nodeList[currNodeIdx].node.leaf._count = 0x80000000 | count;  // highest bit set indicates a leaf node (inner node if highest bit is 0)
-		nodeList[currNodeIdx].node.leaf._startIndexInTriIndexList = faceIdx;
+		nodeList[currNodeIdx].node.leaf._startIndexList = faceIdx;
+        nodeList[currNodeIdx].node.leaf._type = TYPE_TRIG;
 
-		for (std::list<const Triangle*>::iterator it = p->_triangles.begin(); it != p->_triangles.end(); it++)
+		for (std::list<const void*>::iterator it = p->_primitive.begin(); it != p->_primitive.end(); it++)
 		{
-			faceList[faceIdx++] = *it - pFirstTriangle;
+            const Triangle* trig = (const Triangle*) *(it);
+			faceList[faceIdx].primID = trig - pFirstTriangle;
+            faceList[faceIdx].idx0   = trig->idx0;
+            faceList[faceIdx].idx1   = trig->idx1;
+            faceList[faceIdx].idx2   = trig->idx2;
+            faceIdx++;
 		}
 	}
 }
 
 void CreateDeviceBVH(BVHNode* root, const std::vector<Triangle>& faces,
-    std::vector<unsigned int>& faceList, std::vector<DeviceBVHNode>& nodeList)
+    std::vector<DeviceTriangle>& faceList, std::vector<DeviceBVHNode>& nodeList)
 {
-	unsigned int faceCount = CountTriangles(root);
-	faceList.resize(faceCount);
+	faceList.resize(faces.size());
 
 	unsigned int nodeCount = CountBoxes(root);
 	nodeList.resize(nodeCount);
@@ -430,7 +485,7 @@ void CreateDeviceBVH(BVHNode* root, const std::vector<Triangle>& faces,
 	unsigned int nodeIdx = 0;
 	PopulateCacheFriendlyBVH(&faces[0], root, faceIdx, nodeIdx, faceList, nodeList);
 
-	if ((nodeIdx != nodeCount - 1) || (faceIdx != faceCount)) {
+	if ((nodeIdx != nodeCount - 1) || (faceIdx != faces.size())) {
 		puts("Internal bug in CreateCFBVH, please report it..."); fflush(stdout);
 		exit(1);
 	}
@@ -439,5 +494,77 @@ void CreateDeviceBVH(BVHNode* root, const std::vector<Triangle>& faces,
 	CountDepth(root, 0, maxDepth);
 	printf("Max BVH depth is %d\n", maxDepth);
 }
+
+void PopulateCacheFriendlyBVH(
+	const Instance *pFirstInstance, BVHNode *root, unsigned int& instIdx, unsigned int& nodeIdx,
+    std::map<BottomAccelStruct, unsigned int>& instOffsetMap,
+    std::vector<DeviceInstance>& instList, std::vector<DeviceBVHNode>& nodeList)
+{
+	unsigned currNodeIdx = nodeIdx;
+	nodeList[currNodeIdx]._bottom = root->_bottom;
+	nodeList[currNodeIdx]._top = root->_top;
+
+	//DEPTH FIRST APPROACH (left first until complete)
+	if (!root->IsLeaf()) { // inner node
+		BVHInner *p = dynamic_cast<BVHInner*>(root);
+		// recursively populate left and right
+		int idxLeft = ++nodeIdx;
+		PopulateCacheFriendlyBVH(
+            pFirstInstance, p->_left, instIdx, nodeIdx, instOffsetMap, instList, nodeList);
+		int idxRight = ++nodeIdx;
+		PopulateCacheFriendlyBVH(
+            pFirstInstance, p->_right, instIdx, nodeIdx, instOffsetMap, instList, nodeList);
+		nodeList[currNodeIdx].node.inner._idxLeft = idxLeft;
+		nodeList[currNodeIdx].node.inner._idxRight = idxRight;
+	}
+
+	else { // leaf
+		BVHLeaf *p = dynamic_cast<BVHLeaf*>(root);
+		unsigned count = p->_primitive.size();
+		nodeList[currNodeIdx].node.leaf._count = 0x80000000 | count;
+		nodeList[currNodeIdx].node.leaf._startIndexList = instIdx;
+        nodeList[currNodeIdx].node.leaf._type = TYPE_INST;
+
+		for (std::list<const void*>::iterator it = p->_primitive.begin();
+            it != p->_primitive.end(); it++)
+		{
+            const Instance* inst = (const Instance*) *(it);
+			instList[instIdx].instanceID                = inst - pFirstInstance;
+            instList[instIdx].customInstanceID          = inst->customInstanceID;
+            instList[instIdx].SBTOffset                 = inst->SBTOffset;
+            instList[instIdx].transform                 = inst->transform;
+            instList[instIdx].bottomAccelStructOffset   = instOffsetMap[inst->bottomAccelStruct];
+            instIdx++;
+		}
+	}
+}
+
+void CreateDeviceBVH(BVHNode* root, const std::vector<Instance>& instList,
+    std::vector<DeviceInstance>& deviceInstList, std::vector<DeviceBVHNode>& nodeList,
+    std::map<BottomAccelStruct, unsigned int>& instOffsetMap)
+{
+
+    deviceInstList.resize(instList.size());
+	nodeList.resize(CountBoxes(root));
+    unsigned int topASSize = sizeof(AccelStructTop) + 
+        nodeList.size() * sizeof(DeviceBVHNode) +
+        deviceInstList.size() * sizeof(DeviceInstance);
+
+    unsigned int nextOffset = 0;
+    for (const Instance& i: instList)
+    {
+        if (instOffsetMap.find(i.bottomAccelStruct) == instOffsetMap.end())
+        {
+            printf("Building TopAS: Writing to instance offset at: %u", nextOffset);
+            instOffsetMap[i.bottomAccelStruct] = nextOffset + topASSize;
+            nextOffset = nextOffset + i.bottomAccelStruct->data.size();
+        }
+    }
+
+    unsigned int instIdx = 0;
+	unsigned int nodeIdx = 0;
+	PopulateCacheFriendlyBVH(&instList[0], root, instIdx, nodeIdx, instOffsetMap, deviceInstList, nodeList);
+}
+
 
 } // namespace RD

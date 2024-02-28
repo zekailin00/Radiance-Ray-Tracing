@@ -9,12 +9,8 @@
 namespace RD
 {
 
-typedef aiVector2t<float> Vec2;
-typedef aiVector3f Vec3;
-typedef aiMatrix4x4 Mat4x4;
-
 typedef cl_mem Handle;
-typedef cl_mem AccelStruct;
+typedef cl_mem TopAccelStruct;
 
 typedef cl_mem Image;
 typedef unsigned int Uniform;
@@ -35,12 +31,23 @@ struct Mesh
     std::vector<Triangle> indexData;
 };
 
+struct BVHNode;
+struct _BottomAccelStruct
+{
+    BVHNode* root;
+    std::vector<char> data;
+};
+
+typedef _BottomAccelStruct* BottomAccelStruct;
+
 // Host instance data
 struct Instance
 {
-    Mat4x4 transform;
+    Mat4x4 transform; // row majorx
     unsigned int SBTOffset;
-    AccelStruct handle;
+    // unsigned int instanceID; // automatically computed when building TopAS
+    unsigned int customInstanceID;
+    BottomAccelStruct bottomAccelStruct;
 };
 
 typedef std::vector<cl_mem> DescriptorSet;
@@ -74,8 +81,8 @@ struct Platform;
 #define RD_CHANNEL CHANNEL
 
 // blocking, build AS
-AccelStruct BuildAccelStruct(Platform* platform, Mesh& mesh);
-AccelStruct BuildAccelStruct(Instance* instances, unsigned int size);
+BottomAccelStruct BuildAccelStruct(Platform* platform, Mesh& mesh);
+TopAccelStruct BuildAccelStruct(Platform* platform, std::vector<Instance>& instances);
 
 Image  CreateImage(Platform* platform, unsigned int width, unsigned int height);
 Buffer CreateBuffer(Platform* platform, unsigned int size); // TODO:
@@ -109,12 +116,14 @@ struct Platform
         {
             ctx.clContext = CLContext::GetCLContext();
             ctx.initialized = true;
+            printf("Platform initialized.\n");
         }
         return &ctx;
     }
 
     ~Platform()
     {
+        printf("Platform destroyed.\n");
         clContext->Cleanup();
     }
 

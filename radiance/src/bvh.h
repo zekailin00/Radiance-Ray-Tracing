@@ -1,6 +1,7 @@
 #pragma once
-#include "core.h"
+#include "radiance.h"
 
+#include <map>
 
 namespace RD
 {
@@ -23,13 +24,23 @@ struct BVHInner: BVHNode
 
 struct BVHLeaf: BVHNode
 {
-	std::list<const Triangle*> _triangles;
+	std::list<const void*> _primitive;
 	virtual bool IsLeaf() { return true; }
 };
 
+#define TYPE_INST 1
+#define TYPE_TRIG 2
+
+#define TYPE_TOP_AS 1
+#define TYPE_BOT_AS 2
+
 BVHNode *CreateBVH(const std::vector<aiVector3f>& vertices, const std::vector<Triangle>& triangles);
+BVHNode *CreateBVH(const std::vector<Instance>& instances);
 
 void CreateDeviceBVH(BVHNode* root, const std::vector<Triangle>& faces,
-    std::vector<unsigned int>& faceList, std::vector<DeviceBVHNode>& nodeList);
+    std::vector<DeviceTriangle>& faceList, std::vector<DeviceBVHNode>& nodeList);
+void CreateDeviceBVH(BVHNode* root, const std::vector<Instance>& faces,
+    std::vector<DeviceInstance>& faceList, std::vector<DeviceBVHNode>& nodeList,
+    std::map<BottomAccelStruct, unsigned int>& instOffsetList);
 
 } // namespace RD

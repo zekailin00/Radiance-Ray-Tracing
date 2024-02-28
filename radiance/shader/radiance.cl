@@ -1,56 +1,19 @@
 
+#include "data.cl"//////////////////////////////////////////////////////////////////////
+
+
 struct Payload;
-
-struct AccelStruct
-{
-    unsigned int nodeByteOffset;
-    unsigned int faceByteOffset;
-    unsigned int faceRefByteOffset;
-    unsigned int _; // alignment
-};
-
-struct BVHNode
-{
-   	float4 _bottom;
-	float4 _top;
-
-	union {
-		// inner node - stores indexes to children
-		struct {
-			unsigned int _idxLeft;
-			unsigned int _idxRight;
-            unsigned int _2, _3; // alignment
-		} inner;
-
-		// leaf node: stores face count and references
-		struct {
-			unsigned int _count; // Top-most bit set, leafnode if set, innernode otherwise
-			unsigned int _startIndexFaceRefList;
-            unsigned int _2, _3; // alignment
-		} leaf;
-	} node;
-};
-
-struct Triangle
-{
-    // FIXME: use indices for optimization
-    // // indexes in vertices array
-	// unsigned _idx0;
-	// unsigned _idx1;
-	// unsigned _idx2;
-
-    float4 v0;// v0.xyz is vertex; v0.w is not used
-    float4 v1;
-    float4 v2;
-};
 
 struct HitData
 {
     float3 hitPoint;
-    float3 normal;
+    float distance;
     unsigned int primitiveIndex;        // Bottom-level triangle index (gl_PrimitiveID)
     unsigned int instanceIndex;         // Top-level instance index (gl_InstanceID)
     unsigned int instanceCustomIndex;   // Top-level instance custom index (gl_InstanceCustomIndexEXT)
+
+    //tmp
+    struct Triangle* face;
 };
 
 /* User defined begin */
@@ -61,32 +24,26 @@ void miss(struct Payload* ray);
 
 
 bool intersectTriangle(float3 origin, float3 direction, 
-                       const struct Triangle* triangle,
+                       const struct Triangle* triangle, Vertex* vertexList,
                        float3* intersectPoint, float* distance);
 bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax);
 
-#define TO_BVH_NODE(accelStruct) (struct BVHNode*)(((char*)accelStruct) + accelStruct->nodeByteOffset)
-#define TO_FACE_REF(accelStruct) (unsigned int*)(((char*)accelStruct) + accelStruct->faceRefByteOffset)
-#define TO_FACE(accelStruct) (struct Triangle*)(((char*)accelStruct) + accelStruct->faceByteOffset)
-#define IS_LEAF(BVHNode) (BVHNode->node.leaf._count & 0x80000000)
-#define GET_COUNT(BVHNode) (BVHNode->node.leaf._count & 0x7fffffff)
-#define BVH_STACK_SIZE 128
+
+#define BVH_STACK_SIZE 64
 
 bool intersect(
-    __global struct AccelStruct* topLevel,
+    struct AccelStruct* accelStruct,
     float3 origin, float3 direction,
-    float Tmin, float Tmax, struct HitData* hitData)
+    float Tmin, float Tmax, struct HitData* hitData, int depth)
 {
-    // return false;
-	// Closest triangle hit
-	int bestFaceIndex = -1;
-	float bestFaceDist = FLT_MAX;
-    float3 hitPoint;
+	// Closest hit data
+    float bestFaceDist = FLT_MAX;
 
-    struct BVHNode* nodeList  = TO_BVH_NODE(topLevel);
-    unsigned int* faceRefList = TO_FACE_REF(topLevel);
-    struct Triangle* faceList = TO_FACE(topLevel);
-
+    if (depth > 2)
+    {
+        printf("Interset depth:%d\n", depth);
+        return false;
+    }
 
     // Stack pointing to BVH node index
 	unsigned int stack[BVH_STACK_SIZE];
@@ -100,6 +57,7 @@ bool intersect(
 		unsigned int nodeIdx = stack[stackIdx - 1];
 		stackIdx--;
 
+        struct BVHNode* nodeList = TO_BVH_NODE(accelStruct);
 		struct BVHNode* node = nodeList + nodeIdx;
 
 		if (!IS_LEAF(node)) // INNER NODE
@@ -112,49 +70,82 @@ bool intersect(
 				
 				// return if stack size is exceeded
 				if (stackIdx > BVH_STACK_SIZE)
-					return false; 
-				
+                {
+                    printf("ERROR: stack overflow\n");
+                    return false; 
+                }
 			}
 		}
 		else // LEAF NODE
         {
-            unsigned int beginIdx = node->node.leaf._startIndexFaceRefList;
-            unsigned int endIdx = beginIdx + GET_COUNT(node);
-
-			// loop over every triangle in the leaf node
-			for (unsigned i = beginIdx; i < endIdx; i++)
+            if (node->node.leaf._type == TYPE_INST)
             {
-				unsigned int faceIdx = faceRefList[i];
-                struct Triangle* face = faceList + faceIdx;
+                struct Instance* instanceList = TO_INST(accelStruct);
 
-                float3 intersectPoint;
-                float distance;
-
-                if (intersectTriangle(origin, direction, face, &intersectPoint, &distance))
+                for (unsigned int i = 0; i < GET_COUNT(node); i++)
                 {
-                    if (distance < bestFaceDist)
+                    struct Instance* instance = &instanceList[node->node.leaf._startIndexList + i];
+                    struct AccelStruct* botAccelStruct = TO_BOT_AS(accelStruct, instance);
+
+                    // TODO: transform ray
+                    float3 position = {instance->r0.w, instance->r1.w, instance->r2.w};
+                    float3 localOrigin = origin - position;
+                    float3 localDir = direction;
+
+                    struct HitData localHitData;
+                    if (intersect(botAccelStruct, localOrigin, localDir, Tmin, Tmax, &localHitData, depth + 1))
                     {
-                        // maintain the closest hit
-                        bestFaceIndex = (int)faceIdx;
-                        bestFaceDist = distance;
-                        hitPoint = intersectPoint;
-                        
-                        // store barycentric coordinates (for texturing, not used for now)
+                        if (localHitData.distance < bestFaceDist)
+                        {
+                            // maintain the closest hit
+                            bestFaceDist = localHitData.distance;
+
+                            hitData->hitPoint = localHitData.hitPoint;
+                            hitData->face = localHitData.face;
+                            hitData->distance = localHitData.distance;
+                            hitData->primitiveIndex = localHitData.face->primID;
+                            
+                            hitData->instanceIndex = instance->instanceID;
+                            hitData->instanceCustomIndex = instance->customInstanceID;
+                            
+                            // store barycentric coordinates (for texturing, not used for now)
+                        }
                     }
                 }
-			}
+            }
+            else
+            {
+                Vertex* vertexList = TO_VERTEX(accelStruct);
+                struct Triangle* faceList = TO_FACE(accelStruct);
+
+                // loop over every triangle in the leaf node
+                for (unsigned int i = 0; i < GET_COUNT(node); i++)
+                {
+                    struct Triangle* face = &faceList[node->node.leaf._startIndexList + i];
+
+                    float3 intersectPoint;
+                    float distance;
+                    if (intersectTriangle(origin, direction, face, vertexList, &intersectPoint, &distance))
+                    {
+                        if (distance < bestFaceDist)
+                        {
+                            // maintain the closest hit
+                            bestFaceDist = distance;
+
+                            hitData->face = face;
+                            hitData->distance = distance;
+                            hitData->hitPoint = intersectPoint;
+                            hitData->primitiveIndex = face->primID;
+                            
+                            // store barycentric coordinates (for texturing, not used for now)
+                        }
+                    }
+                }
+            }
 		}
 	}
 
-    if (bestFaceIndex != -1)
-    {
-        struct Triangle* face = faceList + bestFaceIndex;
-        hitData->normal = (normalize(cross(face->v1.xyz - face->v0.xyz, face->v2.xyz - face->v0.xyz)));
-    }
-
-    hitData->hitPoint = hitPoint;
-    hitData->primitiveIndex = bestFaceIndex;
-	return bestFaceIndex != -1;
+	return bestFaceDist < FLT_MAX;
 }
 
 // https://gist.github.com/DomNomNom/46bb1ce47f68d255fd5d
@@ -175,11 +166,11 @@ bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax
 
 // https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
 bool intersectTriangle(float3 origin, float3 direction, 
-                       const struct Triangle* triangle,
+                       const struct Triangle* triangle, Vertex* vertexList,
                        float3* intersectPoint, float* distance)
 {
-    float3 edge1 = triangle->v1.xyz - triangle->v0.xyz;
-    float3 edge2 = triangle->v2.xyz - triangle->v0.xyz;
+    float3 edge1 = vertexList[triangle->idx1].xyz - vertexList[triangle->idx0].xyz;
+    float3 edge2 = vertexList[triangle->idx2].xyz - vertexList[triangle->idx0].xyz;
 
     float3 ray_cross_e2 = cross(direction, edge2);
     float det = dot(edge1, ray_cross_e2);
@@ -188,7 +179,7 @@ bool intersectTriangle(float3 origin, float3 direction,
         return false;    // This ray is parallel to this triangle.
 
     float inv_det = 1.0 / det;
-    float3 s = origin - triangle->v0.xyz;
+    float3 s = origin - vertexList[triangle->idx0].xyz;
     float u = inv_det * dot(s, ray_cross_e2);
 
     float3 s_cross_e1 = cross(s, edge1);
@@ -223,7 +214,7 @@ void traceRay(
     struct Payload* payload)
 {
     struct HitData hitData;
-    if (intersect(topLevel, origin, direction, Tmin, Tmax, &hitData))
+    if (intersect(topLevel, origin, direction, Tmin, Tmax, &hitData, 1))
     {
         hit(payload, &hitData);
     }

@@ -3,6 +3,7 @@
 add_library(radiance
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bvh.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/radiance.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/clcontext.cpp
 )
 
 target_link_libraries(radiance PUBLIC
