@@ -3,4 +3,4 @@
 .vscode
 **.obj
 **/scratch
-**.txt
+*log*
