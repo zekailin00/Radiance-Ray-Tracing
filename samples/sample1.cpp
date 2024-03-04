@@ -5,6 +5,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
+#include "inspector.h"
 
 bool modelLoader(
     std::vector<RD::Vec3>& vertices,
@@ -55,6 +56,18 @@ bool modelLoader(
 
     return true;
 }
+
+struct CbData
+{
+    RD::Platform* plt;
+    unsigned int* extent;
+    uint8_t* image;
+    RD::Buffer rdImage;
+    size_t imageSize;
+};
+
+void render(void* data, unsigned char** image, int* out_width, int* out_height);
+
 
 int main()
 {
@@ -196,9 +209,28 @@ int main()
     /* Ray tracing */
     RD::BindPipeline(plt, pipeline);    
     RD::BindDescriptorSet(plt, descSet);
-    RD::TraceRays(plt, 0,0,0, extent[0], extent[1]);
+
+    CbData data = {
+        .plt = plt,
+        .extent = extent,
+        .image = image,
+        .rdImage = rdImage,
+        .imageSize = imageSize
+    };
+
+    renderLoop(render, &data);
+}
+
+void render(void* data, unsigned char** image, int* out_width, int* out_height)
+{
+    CbData *d = (CbData*) data;
+    RD::TraceRays(d->plt, 0,0,0, d->extent[0], d->extent[1]);
 
     /* Fetch result */
-    RD::ReadBuffer(plt, rdImage, imageSize, image);
-    stbi_write_jpg("output.jpg", extent[0], extent[1], RD_CHANNEL, image, 100);
+    RD::ReadBuffer(d->plt, d->rdImage, d->imageSize, d->image);
+    // stbi_write_jpg("output.jpg", extent[0], extent[1], RD_CHANNEL, image, 100);
+
+    *image = d->image;
+    *out_height = d->extent[1];
+    *out_width  = d->extent[0];
 }

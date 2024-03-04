@@ -40,7 +40,7 @@ __kernel void raygen(
     image[CHANNEL * index + 0] = payload.color[0];
     image[CHANNEL * index + 1] = payload.color[1];
     image[CHANNEL * index + 2] = payload.color[2];
-    image[CHANNEL * index + 3] = 0;
+    image[CHANNEL * index + 3] = 255;
 }
 
 
