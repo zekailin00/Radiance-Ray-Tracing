@@ -5,9 +5,11 @@ find_package(OpenCL REQUIRED)
 
 add_subdirectory(external/assimp)
 add_subdirectory(external/glad)
+add_subdirectory(external/imgui)
 
 add_subdirectory(radiance)
 add_subdirectory(samples)
+add_subdirectory(visualization)
 
 # add_executable(example
 #     main.cpp

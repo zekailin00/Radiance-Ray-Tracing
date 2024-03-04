@@ -1,6 +1,6 @@
 **/build
 **/glad
-**/visualization
 .vscode
 **.obj
 **/scratch
+**.txt
