@@ -81,7 +81,7 @@ void hit(struct Payload* payload, struct HitData* hitData)
 
     float3 e1 = v1 - v0;
     float3 e2 = v2 - v0;
-    float3 normal = -cross(e1, e2);
+    float3 normal = cross(e1, e2);
     normal = normalize(normal);
 
     int matIndex = hitData->instanceIndex % 3;

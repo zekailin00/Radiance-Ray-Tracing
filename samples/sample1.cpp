@@ -212,10 +212,13 @@ void RenderSceneConfigUI(CbData *d)
 
     {
         ImGui::Begin("Render Config");
+
+        ImGui::Text("Camera:");
         ImGui::SliderFloat3("Camera Position", camData, -20.0f, 20.0f);
         ImGui::SliderFloat("Camera Rotation", &camData[3], -10.0f, 10.0f);
 
-        ImGui::SliderFloat4("Light Direction", scene.lights[0].direction, -10.0f, 10.0f);
+        ImGui::Text("Light:");
+        ImGui::SliderFloat4("Light Direction", scene.lights[0].direction, -100.0f, 100.0f);
         ImGui::SliderFloat4("Light Color", scene.lights[0].color, 0.0f, 100.0f);
 
         ImGui::Text("Material 0:");
@@ -384,7 +387,7 @@ void GetSceneData(RD::SceneProperties* sceneData)
 {
     sceneData->lightCount[0] = 1;
     sceneData->lights[0] = {
-        .direction = {2.0f, -4.0f, 2.0f},
-        .color = {10.0f, 10.0f, 10.0f, 1.0f}
+        .direction = {0.0f, 0.0f, -5.0f},
+        .color = {1.0f, 1.0f, 1.0f, 1.0f}
     };
 }
