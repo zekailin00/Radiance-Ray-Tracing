@@ -35,14 +35,11 @@
 #include "inspector.h"
 
 // Simple helper function to load an image into a OpenGL texture with common settings
-bool LoadTextureFromBuffer(const unsigned char* image_data, GLuint* out_texture, int image_width, int image_height)
+bool LoadTextureFromBuffer(const unsigned char* image_data, GLuint image_texture, int image_width, int image_height)
 {
     if (image_data == NULL)
         return false;
 
-    // Create a OpenGL texture identifier
-    GLuint image_texture;
-    glGenTextures(1, &image_texture);
     glBindTexture(GL_TEXTURE_2D, image_texture);
 
     // Setup filtering parameters for display
@@ -57,8 +54,6 @@ bool LoadTextureFromBuffer(const unsigned char* image_data, GLuint* out_texture,
 #endif
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image_width, image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_data);
 
-    *out_texture = image_texture;
-
     return true;
 }
 
@@ -70,7 +65,7 @@ static void glfw_error_callback(int error, const char* description)
 
 int renderLoop(Callback callback, void* callbackData)
 {
-        glfwSetErrorCallback(glfw_error_callback);
+    glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
         return 1;
 
@@ -96,6 +91,8 @@ int renderLoop(Callback callback, void* callbackData)
     //glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
     //glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // 3.0+ only
 #endif
+    GLuint image_texture;
+    glGenTextures(1, &image_texture);
 
     // Create window with graphics context
     GLFWwindow* window = glfwCreateWindow(1280, 720, "Dear ImGui GLFW+OpenGL3 example", nullptr, nullptr);
@@ -222,13 +219,12 @@ int renderLoop(Callback callback, void* callbackData)
 
             if (image != nullptr)
             {
-                GLuint texture;
-                LoadTextureFromBuffer(image, &texture, width, height);
+                LoadTextureFromBuffer(image, image_texture, width, height);
 
                 ImGui::Begin("OpenGL Texture Text");
-                ImGui::Text("pointer = %x", texture);
+                ImGui::Text("pointer = %x", image_texture);
                 ImGui::Text("size = %d x %d", width, height);
-                ImGui::Image((void*)(intptr_t)texture, ImVec2(width, height));
+                ImGui::Image((void*)(intptr_t)image_texture, ImVec2(width, height));
                 ImGui::End();
             }
         }
