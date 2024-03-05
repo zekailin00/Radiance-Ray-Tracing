@@ -84,12 +84,15 @@ struct Platform;
 BottomAccelStruct BuildAccelStruct(Platform* platform, Mesh& mesh);
 TopAccelStruct BuildAccelStruct(Platform* platform, std::vector<Instance>& instances);
 
+void TopAccelStructToFile(Platform* platform, TopAccelStruct accelStruct, char* path);
+void FileToTopAccelStruct(Platform* platform, char* path, TopAccelStruct* accelStruct);
+
 Image  CreateImage(Platform* platform, unsigned int width, unsigned int height);
 Buffer CreateBuffer(Platform* platform, unsigned int size); // TODO:
 Image  CreateImageArray(); // TODO:
 
-void ReadBuffer(Platform* platform, Handle handle, size_t size, void* data);
-void WriteBuffer(Platform* platform, Handle handle, size_t size, void* data);
+void ReadBuffer(Platform* platform,Handle handle, size_t size, void* data, size_t offset = 0);
+void WriteBuffer(Platform* platform, Handle handle, size_t size, void* data, size_t offset = 0);
 
 DescriptorSet   CreateDescriptorSet(std::vector<Handle> handles); // allocate GPU resources
 PipelineLayout  CreatePipelineLayout(std::vector<DescriptorType> descriptorTypes);

@@ -36,7 +36,7 @@ struct AccelStructTop // 1 block mapped
     unsigned int type;
     unsigned int nodeByteOffset;
     unsigned int instByteOffset;
-    unsigned int topASSize;
+    unsigned int totalBufferSize;
 };
 
 struct AccelStructBottom // 1 block mapped

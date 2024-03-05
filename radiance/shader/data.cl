@@ -4,7 +4,7 @@ struct AccelStructTop // 1 block
     unsigned int type;
     unsigned int nodeByteOffset;
     unsigned int instByteOffset;
-    unsigned int topASSize;
+    unsigned int totalBufferSize;
 };
 
 struct AccelStructBottom // 1 block
@@ -23,7 +23,7 @@ struct AccelStruct// 1 block
     union {
         struct {
             unsigned int instByteOffset;
-            unsigned int topASSize;
+            unsigned int totalBufferSize;
         } top;
 
         struct {
@@ -94,7 +94,7 @@ void printAccelStructTop(struct AccelStruct* in)
     printf("\t type: %u\n", in->type);
     printf("\t nodeByteOffset: %u\n", in->nodeByteOffset);
     printf("\t instByteOffset: %u\n", in->u.top.instByteOffset);
-    printf("\t topASSize: %u\n", in->u.top.topASSize);
+    printf("\t totalBufferSize: %u\n", in->u.top.totalBufferSize);
 }
 
 void printAccelStructBottom(struct AccelStruct* in)

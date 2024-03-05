@@ -119,18 +119,20 @@ Pipeline CreatePipeline(PipelineCreateInfo pipelineCreateInfo)
     return pipelineCreateInfo;
 }
 
-void ReadBuffer(Platform* platform, Handle handle, size_t size, void* data)
+void ReadBuffer(Platform* platform,
+    Handle handle, size_t size, void* data, size_t offset)
 {
     CLContext* ctx = platform->clContext;
     CL_CHECK(clEnqueueReadBuffer(ctx->commandQueue, handle,
-        CL_TRUE, 0, size, data, 0, NULL, NULL));
+        CL_TRUE, offset, size, data, 0, NULL, NULL));
 }
 
-void WriteBuffer(Platform* platform, Handle handle, size_t size, void* data)
+void WriteBuffer(Platform* platform,
+    Handle handle, size_t size, void* data, size_t offset)
 {
     CLContext* ctx = platform->clContext;
     CL_CHECK(clEnqueueWriteBuffer(ctx->commandQueue, handle,
-        CL_TRUE, 0, size, data, 0, NULL, NULL));
+        CL_TRUE, offset, size, data, 0, NULL, NULL));
 }
 
 void BindPipeline(Platform* platform, Pipeline pipeline)
@@ -307,10 +309,10 @@ TopAccelStruct _buildTopAccelStruct(CLContext* ctx,
         ctx->context, CL_MEM_READ_WRITE, bufferSizeByte, NULL, &_err));
 
     AccelStructTop accelStruct = {
-        .type           = TYPE_TOP_AS,
-        .nodeByteOffset = sizeof(AccelStructTop),
-        .instByteOffset = (unsigned int) sizeof(AccelStructTop) + nodeListSize,
-        .topASSize      = (unsigned int) sizeof(AccelStructTop) + nodeListSize + deviceInstListSize
+        .type            = TYPE_TOP_AS,
+        .nodeByteOffset  = sizeof(AccelStructTop),
+        .instByteOffset  = (unsigned int) sizeof(AccelStructTop) + nodeListSize,
+        .totalBufferSize = (unsigned int) bufferSizeByte
     };
 
 
@@ -332,6 +334,60 @@ TopAccelStruct _buildTopAccelStruct(CLContext* ctx,
     }
 
     return accelStructBuf;
+}
+
+
+void TopAccelStructToFile(Platform* platform,
+    TopAccelStruct accelStruct, char* path)
+{
+    AccelStructTop header;
+    ReadBuffer(platform, accelStruct, sizeof(AccelStructTop), &header);
+
+    unsigned char* buffer = (unsigned char*) malloc(header.totalBufferSize);
+    ReadBuffer(platform, accelStruct, header.totalBufferSize, buffer);
+
+    FILE* fp = fopen(path, "w");
+
+    unsigned int byteWritten = 0;
+    while(header.totalBufferSize - byteWritten > 0)
+    {
+        byteWritten += fwrite(
+            buffer + byteWritten, 1,
+            header.totalBufferSize - byteWritten, fp);
+    }
+
+    free(buffer);
+}
+
+void FileToTopAccelStruct(Platform* platform,
+    char* path, TopAccelStruct* accelStruct)
+{
+    CLContext* ctx = platform->clContext;
+    AccelStructTop header;
+
+    FILE* fp = fopen(path, "r");
+    unsigned int byteRead = fread(&header, 1, sizeof(AccelStructTop), fp);
+    if (byteRead != sizeof(AccelStructTop))
+        throw;
+
+    cl_mem accelStructBuf = CL_CHECK2(clCreateBuffer(
+        ctx->context, CL_MEM_READ_WRITE, header.totalBufferSize, NULL, &_err));
+
+    rewind(fp);
+    unsigned char* buffer = (unsigned char*) malloc(header.totalBufferSize);
+
+    byteRead = 0;
+    while (header.totalBufferSize - byteRead > 0)
+    {
+        byteRead += fread(
+            buffer + byteRead, 1,
+            header.totalBufferSize - byteRead, fp);
+    }
+
+    WriteBuffer(platform, accelStructBuf, header.totalBufferSize, buffer, 0);
+    free(buffer);
+
+    *accelStruct = accelStructBuf;
 }
 
 } // namespace RD

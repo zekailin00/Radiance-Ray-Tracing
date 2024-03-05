@@ -11,6 +11,7 @@ struct Payload
 __kernel void raygen(
     __global uchar* image /* <row major> */,
     __global unsigned int* extent /* <x,y> */,
+    __global float* camPos /* <x,y,z> */,
     __global struct AccelStruct* topLevel)
 {
     /* the unique global id of the work item for the current pixel */
@@ -24,7 +25,10 @@ __kernel void raygen(
     float f0 = 2; // focal length
     float3 direction = {fx - 0.5, fy - 0.5f, f0};
     direction = normalize(direction);
-    float3 origin = {0.0f, 0.0f, -1.0};
+    float3 origin = {
+        camPos[0],
+        camPos[1],
+        camPos[2]};
 
     struct Payload payload;
     payload.x = (int)(fx * 256);

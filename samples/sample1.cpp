@@ -63,6 +63,7 @@ struct CbData
     unsigned int* extent;
     uint8_t* image;
     RD::Buffer rdImage;
+    RD::Buffer rdCamPos;
     size_t imageSize;
 };
 
@@ -88,6 +89,11 @@ int main()
     RD::read_kernel_file_str(shaderPath.c_str(), &shaderCode, &shaderSize);
     RD::ShaderModule shader = RD::CreateShaderModule(plt, shaderCode, shaderSize, "functName..");
 
+
+#define AS_PATH "./bvh-cache.bin"
+#define LOAD_FROM_FILE
+
+#ifndef LOAD_FROM_FILE
     /* Load mesh and build accel struct */
     RD::Mesh mesh;
     modelLoader(mesh.vertexData, mesh.indexData, modelFile);
@@ -188,17 +194,27 @@ int main()
     };
 
     RD::TopAccelStruct rdTopAS = RD::BuildAccelStruct(plt, instanceList);
+    RD::TopAccelStructToFile(plt, rdTopAS, AS_PATH);
+
+#else
+    RD::TopAccelStruct rdTopAS;
+    RD::FileToTopAccelStruct(plt, AS_PATH, &rdTopAS);
+#endif
 
     /* Define pipeline data inputs */
     RD::Buffer rdImage            = RD::CreateImage(plt, extent[0], extent[1]);
     RD::Buffer rdExtent           = RD::CreateBuffer(plt, sizeof(extent));
     RD::WriteBuffer(plt, rdExtent, sizeof(extent), extent);
 
+    float camPos[3] = {0.0f, 0.0f, -1.0f};
+    RD::Buffer rdCamPos           = RD::CreateBuffer(plt, sizeof(camPos));
+    RD::WriteBuffer(plt, rdCamPos, sizeof(camPos), camPos);
+
     /* Build and configure pipeline */
     RD::DescriptorSet descSet = RD::CreateDescriptorSet(
-        {rdImage, rdExtent, rdTopAS});
+        {rdImage, rdExtent, rdCamPos, rdTopAS});
     RD::PipelineLayout layout = RD::CreatePipelineLayout(
-        {RD::IMAGE_TYPE, RD::BUFFER_TYPE, RD::ACCEL_STRUCT_TYPE});
+        {RD::IMAGE_TYPE, RD::BUFFER_TYPE, RD::BUFFER_TYPE, RD::ACCEL_STRUCT_TYPE});
     RD::Pipeline pipeline     = RD::CreatePipeline({
         1,          // maxRayRecursionDepth
         layout,     // PipelineLayout
@@ -215,15 +231,31 @@ int main()
         .extent = extent,
         .image = image,
         .rdImage = rdImage,
+        .rdCamPos = rdCamPos,
         .imageSize = imageSize
     };
 
     renderLoop(render, &data);
 }
 
+#include "imgui.h"
+
 void render(void* data, unsigned char** image, int* out_width, int* out_height)
 {
     CbData *d = (CbData*) data;
+
+    float camPos[3];
+    RD::ReadBuffer(d->plt, d->rdCamPos, sizeof(camPos), camPos);
+
+    {
+        ImGui::Begin("Render Config");
+        ImGui::SliderFloat3("camera pos", camPos, -10.0f, 10.0f);
+        ImGui::End();
+    }
+
+    RD::Buffer rdCamPos = RD::CreateBuffer(d->plt, sizeof(camPos));
+    RD::WriteBuffer(d->plt, d->rdCamPos, sizeof(camPos), camPos);
+
     RD::TraceRays(d->plt, 0,0,0, d->extent[0], d->extent[1]);
 
     /* Fetch result */
