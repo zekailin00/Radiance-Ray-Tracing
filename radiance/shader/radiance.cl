@@ -1,6 +1,6 @@
 
-#include "data.cl"//////////////////////////////////////////////////////////////////////
-
+#include "data.cl"
+#include "pbr.cl"
 
 struct Payload;
 
@@ -12,8 +12,8 @@ struct HitData
     unsigned int instanceIndex;         // Top-level instance index (gl_InstanceID)
     unsigned int instanceCustomIndex;   // Top-level instance custom index (gl_InstanceCustomIndexEXT)
 
-    //tmp
-    struct Triangle* face;
+    // float3 v0, v1, v2;
+    //TODO: uv
 };
 
 /* User defined begin */
@@ -100,12 +100,14 @@ bool intersect(
                             // maintain the closest hit
                             bestFaceDist = localHitData.distance;
 
-                            hitData->hitPoint = localHitData.hitPoint;
-                            hitData->face = localHitData.face;
-                            hitData->distance = localHitData.distance;
-                            hitData->primitiveIndex = localHitData.face->primID;
+                            // hitData->v0             = localHitData.v0;
+                            // hitData->v1             = localHitData.v1;
+                            // hitData->v2             = localHitData.v2;
+                            hitData->hitPoint       = localHitData.hitPoint;
+                            hitData->distance       = localHitData.distance;
+                            hitData->primitiveIndex = localHitData.primitiveIndex;
                             
-                            hitData->instanceIndex = instance->instanceID;
+                            hitData->instanceIndex       = instance->instanceID;
                             hitData->instanceCustomIndex = instance->customInstanceID;
                             
                             // store barycentric coordinates (for texturing, not used for now)
@@ -132,9 +134,11 @@ bool intersect(
                             // maintain the closest hit
                             bestFaceDist = distance;
 
-                            hitData->face = face;
-                            hitData->distance = distance;
-                            hitData->hitPoint = intersectPoint;
+                            // hitData->v0             = vertexList[face->idx0].xyz;
+                            // hitData->v1             = vertexList[face->idx1].xyz;
+                            // hitData->v2             = vertexList[face->idx2].xyz;
+                            hitData->distance       = distance;
+                            hitData->hitPoint       = intersectPoint;
                             hitData->primitiveIndex = face->primID;
                             
                             // store barycentric coordinates (for texturing, not used for now)
@@ -223,3 +227,20 @@ void traceRay(
         miss(payload);
     }
 }
+
+// /**
+//  * Return direction of range [-0.5, 0.5] for both x and y axes
+//  * TODO: support super-sampling
+//  */
+// void GetDirection(uint2 extent, float2* out_direction)
+// {
+//     const int work_item_id = get_global_id(0);
+
+//     int x = work_item_id % (int)extent[0]; /* x-coordinate of the pixel */
+//     int y = work_item_id / (int)extent[0]; /* y-coordinate of the pixel */
+//     float fx = ((float)x / (float)extent[0]); /* convert int to float in range [0-1] */
+//     float fy = ((float)y / (float)extent[1]); /* convert int to float in range [0-1] */
+
+//     float2 direction = {fx - 0.5, fy - 0.5f};
+//     *out_direction = direction;
+// }

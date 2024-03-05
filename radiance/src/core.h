@@ -100,4 +100,32 @@ struct DeviceVertex // mapped
     float x, y, z, w;
 };
 
+
+struct Material
+{
+    float albedo[4];
+
+    float metallic;
+    float roughness;
+    float _1;
+    float _2;
+
+    float useAlbedoTex;
+    float useMetallicTex;
+    float useRoughnessTex;
+    float useNormalTex;
+};
+
+struct DirLight
+{
+    float direction[4];
+    float color[4];
+};
+
+struct SceneProperties
+{
+    uint lightCount[4]; // only 1st is used
+    struct DirLight lights[5];
+};
+
 } // namespace RD

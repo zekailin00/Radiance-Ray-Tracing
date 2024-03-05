@@ -99,7 +99,7 @@ ShaderModule CreateShaderModule(Platform* platform, char* code, unsigned int siz
     printf("build program and get raygen kernel\n"); fflush(stdout);
 
     std::string includeDir = SHADER_LIB_PATH;
-    includeDir = "-I" + includeDir;
+    includeDir = "-g -I" + includeDir;
     if(clBuildProgram(tracingProgram, 1, &ctx->device_id, includeDir.c_str(), NULL, NULL) < 0)
     {
         char log[1000];
