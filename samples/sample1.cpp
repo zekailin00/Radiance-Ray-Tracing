@@ -9,6 +9,8 @@
 
 bool modelLoader(
     std::vector<RD::Vec3>& vertices,
+    std::vector<RD::Vec3>& normals,
+    std::vector<RD::Vec3>& uvs,
     std::vector<RD::Triangle>& triangles,
     std::string modelFile)
 {
@@ -38,11 +40,15 @@ bool modelLoader(
     printf("Number of faces: %d\n", mesh->mNumFaces);
 
     vertices.resize(mesh->mNumVertices);
+    normals.resize(mesh->mNumVertices);
+    uvs.resize(mesh->mNumVertices);
     triangles.resize(mesh->mNumFaces);
 
     for (size_t i = 0; i < mesh->mNumVertices; i++)
     {
         vertices[i] = mesh->mVertices[i];
+        normals[i]  = mesh->mNormals[i];
+        uvs[i]      = mesh->mTextureCoords[1]?mesh->mTextureCoords[1][i]:aiVector3D();
     }
 
     for (size_t i = 0; i < mesh->mNumFaces; i++)
@@ -80,7 +86,7 @@ void RenderSceneConfigUI(CbData *d);
 int main()
 {
     std::string modelFile =
-        "/home/zekailin00/Desktop/ray-tracing/framework/assets/stanford-bunny.obj";
+        "/home/zekailin00/Desktop/ray-tracing/framework/assets/monkey-smooth.obj";
     std::string shaderPath =
         "/home/zekailin00/Desktop/ray-tracing/framework/samples/shader.cl";
     unsigned int extent[2] = {1080, 1080};
@@ -98,10 +104,12 @@ int main()
 
     /* Load mesh and build accel struct */
     RD::Mesh mesh;
-    modelLoader(mesh.vertexData, mesh.indexData, modelFile);
+    std::vector<RD::Vec3> normals;
+    std::vector<RD::Vec3> uvs;
+    modelLoader(mesh.vertexData, normals, uvs, mesh.indexData, modelFile);
 
 #define AS_PATH "./bvh-cache.bin"
-#define LOAD_FROM_FILE
+// #define LOAD_FROM_FILE
 
 #ifndef LOAD_FROM_FILE
     RD::BottomAccelStruct rdBottomAS = RD::BuildAccelStruct(plt, mesh);
@@ -117,6 +125,10 @@ int main()
 
 
     /* Define pipeline data inputs */
+    unsigned int depth = 5;
+    RD::Buffer rdDepth = RD::CreateBuffer(plt, sizeof(depth));
+    RD::WriteBuffer(plt, rdDepth, sizeof(depth), &depth);
+
     RD::Buffer rdImage   = RD::CreateImage(plt, extent[0], extent[1]);
     RD::Buffer rdExtent  = RD::CreateBuffer(plt, sizeof(extent));
     RD::WriteBuffer(plt, rdExtent, sizeof(extent), extent);
@@ -128,6 +140,14 @@ int main()
     unsigned int vertexSize = mesh.vertexData.size() * sizeof(RD::Vec3);
     RD::Buffer rdVertexData = RD::CreateBuffer(plt, vertexSize);
     RD::WriteBuffer(plt, rdVertexData, vertexSize, mesh.vertexData.data());
+
+    unsigned int normalSize = normals.size() * sizeof(RD::Vec3);
+    RD::Buffer rdNormalData = RD::CreateBuffer(plt, normalSize);
+    RD::WriteBuffer(plt, rdNormalData, normalSize, normals.data());
+
+    unsigned int uvSize = uvs.size() * sizeof(RD::Vec3);
+    RD::Buffer rdUVData = RD::CreateBuffer(plt, uvSize);
+    RD::WriteBuffer(plt, rdUVData, uvSize, uvs.data());
 
     unsigned int indexSize = mesh.indexData.size() * sizeof(RD::Triangle);
     RD::Buffer rdIndexData = RD::CreateBuffer(plt, indexSize);
@@ -147,12 +167,14 @@ int main()
 
     /* Build and configure pipeline */
     RD::DescriptorSet descSet = RD::CreateDescriptorSet({
-        rdImage, rdExtent, rdCamData,
-        rdVertexData, rdIndexData, rdMatData, rdSceneData,
+        rdDepth,      rdImage,      rdExtent,   rdCamData,
+        rdVertexData, rdNormalData, rdUVData,
+        rdIndexData,  rdMatData,    rdSceneData,
         rdTopAS});
     RD::PipelineLayout layout = RD::CreatePipelineLayout({
-        RD::IMAGE_TYPE, RD::BUFFER_TYPE, RD::BUFFER_TYPE,
-        RD::BUFFER_TYPE, RD::BUFFER_TYPE, RD::BUFFER_TYPE, RD::BUFFER_TYPE,
+        RD::BUFFER_TYPE, RD::IMAGE_TYPE,  RD::BUFFER_TYPE, RD::BUFFER_TYPE,
+        RD::BUFFER_TYPE, RD::BUFFER_TYPE, RD::BUFFER_TYPE,
+        RD::BUFFER_TYPE, RD::BUFFER_TYPE, RD::BUFFER_TYPE,
         RD::ACCEL_STRUCT_TYPE});
     RD::Pipeline pipeline     = RD::CreatePipeline({
         1,          // maxRayRecursionDepth
@@ -298,7 +320,7 @@ void GetInstanceList(
         {
             {1.0f, 1.0f, 1.0f}, // scaling
             aiQuaterniont<float>(), // rotation
-            {0.0f, -.1f, 0.0f} // position
+            {0.0f, -1.0f, 0.0f} // position
         }, // transform
         0, // SBT offset
         40, // customInstanceID
@@ -309,7 +331,7 @@ void GetInstanceList(
         {
             {1.0f, 1.0f, 1.0f}, // scaling
             aiQuaterniont<float>(), // rotation
-            {0.0f, -.2f, 0.0f} // position
+            {0.0f, -2.0f, 0.0f} // position
         }, // transform
         0, // SBT offset
         70, // customInstanceID
@@ -320,7 +342,7 @@ void GetInstanceList(
         {
             {1.0f, 1.0f, 1.0f}, // scaling
             aiQuaterniont<float>(), // rotation
-            {0.1f, 0.0f, 0.0f} // position
+            {1.0f, 0.0f, 0.0f} // position
         }, // transform
         0, // SBT offset
         100, // customInstanceID
@@ -331,7 +353,7 @@ void GetInstanceList(
         {
             {1.0f, 1.0f, 1.0f}, // scaling
             aiQuaterniont<float>(), // rotation
-            {0.1f, -.1f, 0.0f} // position
+            {1.0f, -1.0f, 0.0f} // position
         }, // transform
         0, // SBT offset
         130, // customInstanceID
@@ -342,7 +364,7 @@ void GetInstanceList(
         {
             {1.0f, 1.0f, 1.0f}, // scaling
             aiQuaterniont<float>(), // rotation
-            {0.1f, -.2f, 0.0f} // position
+            {1.0f, -2.0f, 0.0f} // position
         }, // transform
         0, // SBT offset
         160, // customInstanceID
@@ -353,7 +375,7 @@ void GetInstanceList(
         {
             {1.0f, 1.0f, 1.0f}, // scaling
             aiQuaterniont<float>(), // rotation
-            {-0.1f, 0.0f, 0.0f} // position
+            {-1.0f, 0.0f, 0.0f} // position
         }, // transform
         0, // SBT offset
         190, // customInstanceID
@@ -364,7 +386,7 @@ void GetInstanceList(
         {
             {1.0f, 1.0f, 1.0f}, // scaling
             aiQuaterniont<float>(), // rotation
-            {-0.1f, -.1f, 0.0f} // position
+            {-1.0f, -1.0f, 0.0f} // position
         }, // transform
         0, // SBT offset
         220, // customInstanceID
@@ -375,7 +397,7 @@ void GetInstanceList(
         {
             {1.0f, 1.0f, 1.0f}, // scaling
             aiQuaterniont<float>(), // rotation
-            {-0.1f, -.2f, 0.0f} // position
+            {-1.0f, -2.0f, 0.0f} // position
         }, // transform
         0, // SBT offset
         250, // customInstanceID
