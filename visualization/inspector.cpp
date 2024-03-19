@@ -31,6 +31,11 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
+#include <time.h>
+#include <string>
 
 #include "inspector.h"
 
@@ -225,6 +230,17 @@ int renderLoop(Callback callback, void* callbackData)
                 ImGui::Text("pointer = %x", image_texture);
                 ImGui::Text("size = %d x %d", width, height);
                 ImGui::Image((void*)(intptr_t)image_texture, ImVec2(width, height));
+
+                if (ImGui::Button("Save"))
+                {
+                    time_t ltime;
+                    time(&ltime);
+                    char* time = ctime(&ltime);
+                    std::string fileName = "output.";
+                    fileName += time;
+                    fileName += ".jpg";
+                    stbi_write_jpg(fileName.c_str(), width, height, 4, image, 100);
+                }
                 ImGui::End();
             }
         }
