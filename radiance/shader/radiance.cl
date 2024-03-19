@@ -1,8 +1,8 @@
 
 #include "data.cl"
-#include "pbr.cl"
 
 struct Payload;
+struct SceneData;
 
 struct HitData
 {
@@ -18,8 +18,8 @@ struct HitData
 
 /* User defined begin */
 struct Payload;
-void hit (struct Payload* payload, struct HitData* hitData);
-void miss(struct Payload* ray);
+void hit (struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData);
+void miss(struct Payload* ray, struct SceneData* sceneData);
 /* User defined end */
 
 
@@ -29,7 +29,7 @@ bool intersectTriangle(float3 origin, float3 direction,
 bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax);
 
 
-#define BVH_STACK_SIZE 64
+#define BVH_STACK_SIZE 32
 
 bool intersect(
     struct AccelStruct* accelStruct,
@@ -75,78 +75,70 @@ bool intersect(
                     return false; 
                 }
 			}
+
 		}
-		else // LEAF NODE
+        else if (node->node.leaf._type == TYPE_INST)
         {
-            if (node->node.leaf._type == TYPE_INST)
+            struct Instance* instanceList = TO_INST(accelStruct);
+
+            for (unsigned int i = 0; i < GET_COUNT(node); i++)
             {
-                struct Instance* instanceList = TO_INST(accelStruct);
+                struct Instance* instance = &instanceList[node->node.leaf._startIndexList + i];
+                struct AccelStruct* botAccelStruct = TO_BOT_AS(accelStruct, instance);
 
-                for (unsigned int i = 0; i < GET_COUNT(node); i++)
+                // TODO: transform ray
+                float3 position = {instance->r0.w, instance->r1.w, instance->r2.w};
+                float3 localOrigin = origin - position;
+                float3 localDir = direction;
+
+                struct HitData localHitData;
+                if (intersect(botAccelStruct, localOrigin, localDir, Tmin, Tmax, &localHitData, depth + 1))
                 {
-                    struct Instance* instance = &instanceList[node->node.leaf._startIndexList + i];
-                    struct AccelStruct* botAccelStruct = TO_BOT_AS(accelStruct, instance);
-
-                    // TODO: transform ray
-                    float3 position = {instance->r0.w, instance->r1.w, instance->r2.w};
-                    float3 localOrigin = origin - position;
-                    float3 localDir = direction;
-
-                    struct HitData localHitData;
-                    if (intersect(botAccelStruct, localOrigin, localDir, Tmin, Tmax, &localHitData, depth + 1))
+                    if (localHitData.distance < bestFaceDist)
                     {
-                        if (localHitData.distance < bestFaceDist)
-                        {
-                            // maintain the closest hit
-                            bestFaceDist = localHitData.distance;
+                        // maintain the closest hit
+                        bestFaceDist = localHitData.distance;
 
-                            // hitData->v0             = localHitData.v0;
-                            // hitData->v1             = localHitData.v1;
-                            // hitData->v2             = localHitData.v2;
-                            hitData->hitPoint       = localHitData.hitPoint;
-                            hitData->distance       = localHitData.distance;
-                            hitData->primitiveIndex = localHitData.primitiveIndex;
-                            
-                            hitData->instanceIndex       = instance->instanceID;
-                            hitData->instanceCustomIndex = instance->customInstanceID;
-                            
-                            // store barycentric coordinates (for texturing, not used for now)
-                        }
+                        hitData->hitPoint       = localHitData.hitPoint;
+                        hitData->distance       = localHitData.distance;
+                        hitData->primitiveIndex = localHitData.primitiveIndex;
+                        
+                        hitData->instanceIndex       = instance->instanceID;
+                        hitData->instanceCustomIndex = instance->customInstanceID;
+                        
+                        // store barycentric coordinates (for texturing, not used for now)
                     }
                 }
             }
-            else
+        }
+        else if (node->node.leaf._type == TYPE_TRIG)
+        {
+            Vertex* vertexList = TO_VERTEX(accelStruct);
+            struct Triangle* faceList = TO_FACE(accelStruct);
+
+            // loop over every triangle in the leaf node
+            for (unsigned int i = 0; i < GET_COUNT(node); i++)
             {
-                Vertex* vertexList = TO_VERTEX(accelStruct);
-                struct Triangle* faceList = TO_FACE(accelStruct);
+                struct Triangle* face = &faceList[node->node.leaf._startIndexList + i];
 
-                // loop over every triangle in the leaf node
-                for (unsigned int i = 0; i < GET_COUNT(node); i++)
+                float3 intersectPoint;
+                float distance;
+                if (intersectTriangle(origin, direction, face, vertexList, &intersectPoint, &distance))
                 {
-                    struct Triangle* face = &faceList[node->node.leaf._startIndexList + i];
-
-                    float3 intersectPoint;
-                    float distance;
-                    if (intersectTriangle(origin, direction, face, vertexList, &intersectPoint, &distance))
+                    if (distance < bestFaceDist)
                     {
-                        if (distance < bestFaceDist)
-                        {
-                            // maintain the closest hit
-                            bestFaceDist = distance;
+                        // maintain the closest hit
+                        bestFaceDist = distance;
 
-                            // hitData->v0             = vertexList[face->idx0].xyz;
-                            // hitData->v1             = vertexList[face->idx1].xyz;
-                            // hitData->v2             = vertexList[face->idx2].xyz;
-                            hitData->distance       = distance;
-                            hitData->hitPoint       = intersectPoint;
-                            hitData->primitiveIndex = face->primID;
-                            
-                            // store barycentric coordinates (for texturing, not used for now)
-                        }
+                        hitData->distance       = distance;
+                        hitData->hitPoint       = intersectPoint;
+                        hitData->primitiveIndex = face->primID;
+                        
+                        // store barycentric coordinates (for texturing, not used for now)
                     }
                 }
             }
-		}
+        }
 	}
 
 	return bestFaceDist < FLT_MAX;
@@ -215,16 +207,17 @@ void traceRay(
     float3 origin,
     float3 direction,
     float Tmin, float Tmax,
-    struct Payload* payload)
+    struct Payload* payload,
+    struct SceneData* sceneData)
 {
     struct HitData hitData;
     if (intersect(topLevel, origin, direction, Tmin, Tmax, &hitData, 1))
     {
-        hit(payload, &hitData);
+        hit(payload, &hitData, sceneData);
     }
     else
     {
-        miss(payload);
+        miss(payload, sceneData);
     }
 }
 
