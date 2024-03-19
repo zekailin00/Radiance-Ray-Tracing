@@ -158,7 +158,7 @@ void TraceRays(Platform* platform,
     unsigned int width,
     unsigned int height)
 {
-    printf("Execute the kernel\n");
+    // printf("Execute the kernel\n");
     size_t global_work_size[1] = {width * height};
     size_t local_work_size[1] = {1};
     auto time_start = std::chrono::high_resolution_clock::now();
@@ -174,7 +174,7 @@ void TraceRays(Platform* platform,
     
     auto time_end = std::chrono::high_resolution_clock::now();
     double elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(time_end - time_start).count();
-    printf("Elapsed time: %lg ms\n", elapsed);
+    // printf("Elapsed time: %lg ms\n", elapsed);
     fflush(stdout);    
 }
 
