@@ -11,9 +11,7 @@ struct HitData
     unsigned int primitiveIndex;        // Bottom-level triangle index (gl_PrimitiveID)
     unsigned int instanceIndex;         // Top-level instance index (gl_InstanceID)
     unsigned int instanceCustomIndex;   // Top-level instance custom index (gl_InstanceCustomIndexEXT)
-
-    // float3 v0, v1, v2;
-    //TODO: uv
+    float3 barycentric;
 };
 
 /* User defined begin */
@@ -25,7 +23,7 @@ void miss(struct Payload* ray, struct SceneData* sceneData);
 
 bool intersectTriangle(float3 origin, float3 direction, 
                        const struct Triangle* triangle, Vertex* vertexList,
-                       float3* intersectPoint, float* distance);
+                       float3* intersectPoint, float* distance, float3* bary);
 bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax);
 
 
@@ -75,7 +73,6 @@ bool intersect(
                     return false; 
                 }
 			}
-
 		}
         else if (node->node.leaf._type == TYPE_INST)
         {
@@ -102,11 +99,10 @@ bool intersect(
                         hitData->hitPoint       = localHitData.hitPoint;
                         hitData->distance       = localHitData.distance;
                         hitData->primitiveIndex = localHitData.primitiveIndex;
+                        hitData->barycentric    = localHitData.barycentric; 
                         
                         hitData->instanceIndex       = instance->instanceID;
                         hitData->instanceCustomIndex = instance->customInstanceID;
-                        
-                        // store barycentric coordinates (for texturing, not used for now)
                     }
                 }
             }
@@ -123,7 +119,8 @@ bool intersect(
 
                 float3 intersectPoint;
                 float distance;
-                if (intersectTriangle(origin, direction, face, vertexList, &intersectPoint, &distance))
+                float3 bary;
+                if (intersectTriangle(origin, direction, face, vertexList, &intersectPoint, &distance, &bary))
                 {
                     if (distance < bestFaceDist)
                     {
@@ -133,8 +130,7 @@ bool intersect(
                         hitData->distance       = distance;
                         hitData->hitPoint       = intersectPoint;
                         hitData->primitiveIndex = face->primID;
-                        
-                        // store barycentric coordinates (for texturing, not used for now)
+                        hitData->barycentric    = bary;
                     }
                 }
             }
@@ -163,7 +159,7 @@ bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax
 // https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
 bool intersectTriangle(float3 origin, float3 direction, 
                        const struct Triangle* triangle, Vertex* vertexList,
-                       float3* intersectPoint, float* distance)
+                       float3* intersectPoint, float* distance, float3* bary)
 {
     float3 edge1 = vertexList[triangle->idx1].xyz - vertexList[triangle->idx0].xyz;
     float3 edge2 = vertexList[triangle->idx2].xyz - vertexList[triangle->idx0].xyz;
@@ -176,25 +172,27 @@ bool intersectTriangle(float3 origin, float3 direction,
 
     float inv_det = 1.0 / det;
     float3 s = origin - vertexList[triangle->idx0].xyz;
-    float u = inv_det * dot(s, ray_cross_e2);
+    float b1 = inv_det * dot(s, ray_cross_e2);
 
     float3 s_cross_e1 = cross(s, edge1);
-    float v = inv_det * dot(direction, s_cross_e1);
+    float b2 = inv_det * dot(direction, s_cross_e1);
 
     // At this stage we can compute t to find out where the intersection point is on the line.
     float t = inv_det * dot(edge2, s_cross_e1);
 
-
-    if (u < 0 || u > 1)
+    if (b1 < 0 || b1 > 1)
         return false;
 
-    if (v < 0 || u + v > 1)
+    if (b2 < 0 || b1 + b2 > 1)
         return false;
 
     if (t > FLT_EPSILON) // ray intersection
     {
         *distance = t;
         *intersectPoint = origin + direction * t;
+        bary->x = 1 - b1 - b2;
+        bary->y = b1;
+        bary->z = b2;
         return true;
     }
     else // This means that there is a line intersection but not a ray intersection.
