@@ -7,6 +7,7 @@ struct Payload
     uchar y;
     uchar color[3];
     bool hit;
+    bool shadowTest;
 };
 
 struct SceneData
@@ -19,6 +20,7 @@ struct SceneData
     struct Material*           materials;
     struct SceneProperties*    scene;
     uint*                      depth;
+    struct AccelStruct*        topLevel
 };
 
 __kernel void raygen(
@@ -60,6 +62,7 @@ __kernel void raygen(
     payload.color[0] = 0.0f;
     payload.color[1] = 0.0f;
     payload.color[2] = 0.0f;
+    payload.shadowTest = false;
 
     struct SceneData sceneData;
     sceneData.camData       = camData;
@@ -70,6 +73,7 @@ __kernel void raygen(
     sceneData.materials     = materials;
     sceneData.scene         = scene;
     sceneData.depth         = depth;
+    sceneData.topLevel      = topLevel;
 
     traceRay(topLevel, origin, dir, 0.01, 1000, &payload, &sceneData);
 
@@ -98,8 +102,62 @@ printIndexDebug(uint idx0, uint idx1, uint idx2)
             , idx0, idx1, idx2);
 }
 
+float4 CalculatePixelColor(
+    struct Material* material, struct SceneProperties* scene,
+    float3* hitPos, float3* viewPos, float3* normal/*, float2* texCoords*/)
+{
+	float3 N = normalize(*normal);
+	float3 V = normalize(*viewPos - *hitPos);
+
+    float metallicFrag;
+    float roughnessFrag;
+    float3 albedoFrag;
+
+    if (material->useMetallicTex == 0)
+        metallicFrag = material->metallic;
+    // else
+    //     metallicFrag = texture(MetallicTexture, texCoords).x;
+
+    if (material->useRoughnessTex == 0)
+        roughnessFrag = clamp(material->roughness, 0.0f, 1.0f);
+    // else
+    //     roughnessFrag = clamp(texture(RoughnessTexture, texCoords).x, 0.0, 1.0);
+
+    if (material->useAlbedoTex == 0)
+        albedoFrag = material->albedo.rgb;
+    // else
+    //     albedoFrag = texture(AlbedoTexture, texCoords).rgb;
+
+	// Specular contribution
+	float3 Lo = {0.0f, 0.0f, 0.0f};
+	for (int i = 0; i < scene->lightCount.x; i++)
+    {
+		float3 L = normalize(scene->lights[i].direction.xyz);
+        float3 lightColor = scene->lights[i].color.rgb;
+		Lo += BRDF(L, V, N, metallicFrag, roughnessFrag, albedoFrag, lightColor);
+	}
+
+	// Combine with ambient
+	float3 color = albedoFrag * 0.02f;
+	color += Lo;
+
+    // HDR mapping
+    color = color / (color + 1.0f);
+
+	// Gamma correct
+	color = pow(color, 0.4545f);
+
+    float4 fragColor = {color.xyz, 1.0f};
+    return fragColor;
+}
+
 void hit(struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData)
 {
+    payload->hit = true;
+    if (payload->shadowTest)
+        return;
+
+
     float* vertexData = sceneData->vertexData;
     uint* indexData = sceneData->indexData;
     float* normalData = sceneData->normalData;
@@ -115,35 +173,69 @@ void hit(struct Payload* payload, struct HitData* hitData, struct SceneData* sce
     float3 n1 = {normalData[i1 * 3 + 0], normalData[i1 * 3 + 1], normalData[i1 * 3 + 2]};
     float3 n2 = {normalData[i2 * 3 + 0], normalData[i2 * 3 + 1], normalData[i2 * 3 + 2]};
 
-    // // [debug] flat normal shading
-    // float3 e1 = v1 - v0;
-    // float3 e2 = v2 - v0;
-    // float3 normal = cross(e1, e2);
-    // normal = normalize(normal);
-
-    // smooth normal shading
-    float3 normal = hitData->barycentric.x * n0 +
-                    hitData->barycentric.y * n1 + 
-                    hitData->barycentric.z * n2;
-
-    normal = normalize(normal);
 
     int matIndex = hitData->instanceIndex % 3;
+    struct Material* material = &sceneData->materials[matIndex];
 
-    float3 viwePos = {
-        sceneData->camData[0],
-        sceneData->camData[1],
-        sceneData->camData[2]
-    };
-    float4 color = CalculatePixelColor(
-        &sceneData->materials[matIndex],
-        sceneData->scene,
-        &hitData->hitPoint,
-        (float3*)sceneData->camData,
-        &normal
-    );
+    float metallicFrag;
+    if (material->useMetallicTex == 0)
+        metallicFrag = material->metallic;
+    // else
+    //     metallicFrag = texture(MetallicTexture, texCoords).x;
 
-    // depth and recursive ray trace
+    float roughnessFrag;
+    if (material->useRoughnessTex == 0)
+        roughnessFrag = clamp(material->roughness, 0.0f, 1.0f);
+    // else
+    //     roughnessFrag = clamp(texture(RoughnessTexture, texCoords).x, 0.0, 1.0);
+
+    float3 albedoFrag;
+    if (material->useAlbedoTex == 0)
+        albedoFrag = material->albedo.rgb;
+    // else
+    //     albedoFrag = texture(AlbedoTexture, texCoords).rgb;
+
+
+    struct SceneProperties* scene = sceneData->scene;
+    float3 dir = normalize(-scene->lights[0].direction.xyz);
+    float3 origin = hitData->hitPoint + 0.001f * dir; // FIXME: hitpoint is local
+    payload->shadowTest = true;
+    traceRay(sceneData->topLevel, origin, dir, 0.01, 1000, payload, sceneData);
+
+    float3 color = {0.0f, 0.0f, 0.0f};
+    if (payload->hit)
+    {
+        float3 hitPos = hitData->hitPoint;
+        float3 viewPos = {
+            sceneData->camData[0],
+            sceneData->camData[1],
+            sceneData->camData[2]};
+        float3 normal = hitData->barycentric.x * n0 +
+                        hitData->barycentric.y * n1 + 
+                        hitData->barycentric.z * n2;
+
+        float3 N = normalize(normal);
+        float3 V = normalize(viewPos - hitPos);
+        float3 L = normalize(scene->lights[0].direction.xyz);
+
+        // Specular contribution
+        float3 Lo = {0.0f, 0.0f, 0.0f};
+
+        // TODO: support multiple lights
+        float3 lightColor = scene->lights[0].color.rgb;
+        Lo += BRDF(L, V, N, metallicFrag, roughnessFrag, albedoFrag, lightColor);
+
+        color += Lo;
+    }
+
+    // Combine with ambient
+    color += albedoFrag * 0.05f;
+
+    // HDR mapping
+    color = color / (color + 1.0f);
+
+    // Gamma correct
+    color = pow(color, 0.4545f);
 
     payload->color[0] = color.x * 255;
     payload->color[1] = color.y * 255;
@@ -164,14 +256,12 @@ void hit(struct Payload* payload, struct HitData* hitData, struct SceneData* sce
     // payload->color[0] = (uchar)hitData->instanceCustomIndex;
     // payload->color[1] = (uchar)hitData->instanceCustomIndex;
     // payload->color[2] = (uchar)hitData->instanceCustomIndex;
-
-    payload->hit = true;
 }
 
 void miss(struct Payload* payload, struct SceneData* sceneData)
 {
-    payload->color[0] = payload->x;
-    payload->color[1] = payload->y;
-    payload->color[2] = 0;
+    payload->color[0] = 75.0f;
+    payload->color[1] = 75.0f;
+    payload->color[2] = payload->y * 0.7 + 255 * 0.3;
     payload->hit = false;
 }

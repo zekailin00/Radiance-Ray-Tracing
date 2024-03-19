@@ -7,6 +7,8 @@
 
 #include "inspector.h"
 
+#define OFF_SCREEN
+
 bool modelLoader(
     std::vector<RD::Vec3>& vertices,
     std::vector<RD::Vec3>& normals,
@@ -133,7 +135,7 @@ int main()
     RD::Buffer rdExtent  = RD::CreateBuffer(plt, sizeof(extent));
     RD::WriteBuffer(plt, rdExtent, sizeof(extent), extent);
 
-    float camData[4] = {0.0f, 0.0f, -1.0f, 0.0f};
+    float camData[4] = {0.0f, -1.0f, -10.0f, 0.0f};
     RD::Buffer rdCamData = RD::CreateBuffer(plt, sizeof(camData));
     RD::WriteBuffer(plt, rdCamData, sizeof(camData), camData);
 
@@ -199,7 +201,12 @@ int main()
         .rdSceneData = rdSceneData
     };
 
-    renderLoop(render, &data);
+#ifdef OFF_SCREEN
+    render((void*)&data, nullptr, nullptr, nullptr);
+    stbi_write_jpg("output.jpg", extent[0], extent[1], RD_CHANNEL, data.image, 100);
+#else
+    // renderLoop(render, &data);
+#endif
 }
 
 #include "imgui.h"
@@ -207,17 +214,21 @@ int main()
 void render(void* data, unsigned char** image, int* out_width, int* out_height)
 {
     CbData *d = (CbData*) data;
+
+#ifndef OFF_SCREEN
     RenderSceneConfigUI(d);
+#endif
 
     RD::TraceRays(d->plt, 0,0,0, d->extent[0], d->extent[1]);
 
     /* Fetch result */
     RD::ReadBuffer(d->plt, d->rdImage, d->imageSize, d->image);
-    // stbi_write_jpg("output.jpg", extent[0], extent[1], RD_CHANNEL, image, 100);
 
+#ifndef OFF_SCREEN
     *image = d->image;
     *out_height = d->extent[1];
     *out_width  = d->extent[0];
+#endif
 }
 
 void RenderSceneConfigUI(CbData *d)
@@ -267,8 +278,8 @@ void GetMaterialList(std::vector<RD::Material>& materialList)
 {
     materialList.push_back({
         .albedo = {1.0f, 0.0f, 0.0f, 1.0f},
-        .metallic = 0.5,
-        .roughness = 0.9,
+        .metallic = 0.0,
+        .roughness = 0.5,
         ._1 = 0.0f,
         ._2 = 0.0f,
         .useAlbedoTex = 0.0f,
@@ -279,8 +290,8 @@ void GetMaterialList(std::vector<RD::Material>& materialList)
 
     materialList.push_back({
         .albedo = {0.0f, 1.0f, 0.0f, 1.0f},
-        .metallic = 0.9,
-        .roughness = 0.1,
+        .metallic = 0.5,
+        .roughness = 0.5,
         ._1 = 0.0f,
         ._2 = 0.0f,
         .useAlbedoTex = 0.0f,
@@ -291,8 +302,8 @@ void GetMaterialList(std::vector<RD::Material>& materialList)
 
     materialList.push_back({
         .albedo = {0.0f, 0.0f, 1.0f, 1.0f},
-        .metallic = 0.1,
-        .roughness = 0.1,
+        .metallic = 0.0,
+        .roughness = 0.25,
         ._1 = 0.0f,
         ._2 = 0.0f,
         .useAlbedoTex = 0.0f,
@@ -409,7 +420,7 @@ void GetSceneData(RD::SceneProperties* sceneData)
 {
     sceneData->lightCount[0] = 1;
     sceneData->lights[0] = {
-        .direction = {0.0f, 0.0f, -5.0f},
+        .direction = {0.0f, -100.0f, -20.0f},
         .color = {1.0f, 1.0f, 1.0f, 1.0f}
     };
 }

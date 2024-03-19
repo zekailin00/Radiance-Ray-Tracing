@@ -8,6 +8,7 @@ struct HitData
 {
     float3 hitPoint;
     float distance;
+    // gl_ObjectToWorldEXT 4x3 matrix
     unsigned int primitiveIndex;        // Bottom-level triangle index (gl_PrimitiveID)
     unsigned int instanceIndex;         // Top-level instance index (gl_InstanceID)
     unsigned int instanceCustomIndex;   // Top-level instance custom index (gl_InstanceCustomIndexEXT)
@@ -27,7 +28,7 @@ bool intersectTriangle(float3 origin, float3 direction,
 bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax);
 
 
-#define BVH_STACK_SIZE 32
+#define BVH_STACK_SIZE 12
 
 bool intersect(
     struct AccelStruct* accelStruct,
@@ -201,7 +202,7 @@ bool intersectTriangle(float3 origin, float3 direction,
 
 //!raygen 
 void traceRay(
-    __global struct AccelStruct* topLevel,
+    struct AccelStruct* topLevel,
     float3 origin,
     float3 direction,
     float Tmin, float Tmax,
