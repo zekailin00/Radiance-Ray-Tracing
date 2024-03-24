@@ -47,33 +47,40 @@ __kernel void raygen(
     /* the unique global id of the work item for the current pixel */
     const int work_item_id = get_global_id(0);
 
-    int    x = work_item_id % (int)extent[0]; /* x-coordinate of the pixel */
-    int    y = work_item_id / (int)extent[0]; /* y-coordinate of the pixel */
-    float fx = ((float)x / (float)extent[0]); /* convert int to float in range [0-1] */
-    float fy = ((float)y / (float)extent[1]); /* convert int to float in range [0-1] */
-
-    float f0 = 2; // focal length
-    float3 dir = {fx - 0.5, fy - 0.5f, f0};
-    dir = normalize(dir);
-
-    float theta = camData[3];
-    float3 c0 = {cos(theta), 0, -sin(theta)};
-    float3 c1 = {0         , 1,  0         };
-    float3 c2 = {sin(theta), 0,  cos(theta)};
-    dir = dir[0] * c0 + dir[1] * c1 + dir[2] * c2;
-
-    float3 origin = {camData[0], camData[1], camData[2]};
-
     // Index for accessing image data
-    const int CHANNEL = 4;
-    int index = (int)(extent[0] * (extent[1] - y - 1) + (extent[0] - x - 1));
+    int x = work_item_id % (int)extent[0]; /* x-coordinate of the pixel */
+    int y = work_item_id / (int)extent[0]; /* y-coordinate of the pixel */
+    const int index = (int)(extent[0] * (extent[1] - y - 1) + (extent[0] - x - 1));
 
+    const int CHANNEL = 4; // RGBA color output
 
+    // Begin one batch of work
     int iteration = RTProp->batchSize;
     unsigned int frameID = RTProp->totalSamples;
     while (iteration > 0)
     {
         iteration--;
+
+        // anti-alising
+        uint3 randInput = {frameID, RTProp->totalSamples, work_item_id};
+        float3 random = random_pcg3d(randInput);
+
+        /* convert int to float in range [0-1] */
+        float fx = (((float)x + random.x)/ (float)extent[0]);
+        float fy = (((float)y + random.y) / (float)extent[1]);
+
+        float f0 = 2; // focal length
+        float3 dir = {fx - 0.5, fy - 0.5f, f0}; /* range [-0.5, 0.5] */
+        dir = normalize(dir);
+
+        float theta = camData[3];
+        float3 c0 = {cos(theta), 0, -sin(theta)};
+        float3 c1 = {0         , 1,  0         };
+        float3 c2 = {sin(theta), 0,  cos(theta)};
+        dir = dir[0] * c0 + dir[1] * c1 + dir[2] * c2;
+
+        float3 origin = {camData[0], camData[1], camData[2]};
+
 
         struct Payload payload;
         payload.x = x;
@@ -270,9 +277,9 @@ void hit(struct Payload* payload, struct HitData* hitData, struct SceneData* sce
     payload->color[1] = color.y;
     payload->color[2] = color.z;
 
-    //////////////////////////////////
-    //      Global illumination     //
-    //////////////////////////////////
+    ////////////////////////////////////////
+    //      Global illumination Begin     //
+    ////////////////////////////////////////
 
     // different random value for each pixel and each frame
     uint3 randInput = {sceneData->frameID, (uint)get_global_id(0), sceneData->depth};
@@ -291,6 +298,11 @@ void hit(struct Payload* payload, struct HitData* hitData, struct SceneData* sce
     payload->nextRayOrigin = origin;
     payload->nextRayDirection = nextDir;
     payload->nextFactor = nextFactor;
+
+    ////////////////////////////////////////
+    //      Global illumination End       //
+    ////////////////////////////////////////
+
 
     // // [debug] barycentric viz
     // payload->color[0] = hitData->barycentric.x * 255;

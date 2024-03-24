@@ -57,23 +57,6 @@ float3 BRDF(float3 L, float3 V, float3 N, float metallic, float roughness, float
 	return color;
 }
 
-// Hash Functions for GPU Rendering, Jarzynski et al.
-// http://www.jcgt.org/published/0009/03/02/
-float3 random_pcg3d(uint3 v)
-{
-	v = v * 1664525u + 1013904223u;
-	v.x += v.y*v.z; v.y += v.z*v.x; v.z += v.x*v.y;
-	v ^= v >> 16u;
-	v.x += v.y*v.z; v.y += v.z*v.x; v.z += v.x*v.y;
-
-	float3 ret;
-	ret.x = ((float)v.x /0xffffffffu);
-	ret.y = ((float)v.y /0xffffffffu);
-	ret.z = ((float)v.z /0xffffffffu);
-
-	return ret;
-}
-
 void GetNormalSpace(float3 normal, mat4x4* out)
 {
     float3 someVec = {1.0, 0.0, 0.0};

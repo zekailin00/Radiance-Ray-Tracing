@@ -131,7 +131,7 @@ int main()
     RD::RayTraceProperties RTProp = {
         .totalSamples = 0,
         .batchSize = 1,
-        .depth = 8,
+        .depth = 16,
         .debug = 0
     };
     RD::Buffer rdRTProp = RD::CreateBuffer(plt, sizeof(RD::RayTraceProperties));

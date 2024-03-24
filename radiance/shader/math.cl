@@ -2,6 +2,23 @@ typedef float16 mat4x4;
 typedef float3 vec3;
 typedef float4 vec4;
 
+// Hash Functions for GPU Rendering, Jarzynski et al.
+// http://www.jcgt.org/published/0009/03/02/
+float3 random_pcg3d(uint3 v)
+{
+	v = v * 1664525u + 1013904223u;
+	v.x += v.y*v.z; v.y += v.z*v.x; v.z += v.x*v.y;
+	v ^= v >> 16u;
+	v.x += v.y*v.z; v.y += v.z*v.x; v.z += v.x*v.y;
+
+	float3 ret;
+	ret.x = ((float)v.x /0xffffffffu);
+	ret.y = ((float)v.y /0xffffffffu);
+	ret.z = ((float)v.z /0xffffffffu);
+
+	return ret;
+}
+
 void MultiplyMat4Vec4(mat4x4* a, vec4* b, vec4* out)
 {
     out->x = a->s0 * b->x + a->s1 * b->y + a->s2 * b->z + a->s3 * b->w;
