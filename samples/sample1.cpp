@@ -130,8 +130,8 @@ int main()
     /* Define pipeline data inputs */
     RD::RayTraceProperties RTProp = {
         .totalSamples = 0,
-        .batchSize = 1,
-        .depth = 16,
+        .batchSize = 2,
+        .depth = 8,
         .debug = 0
     };
     RD::Buffer rdRTProp = RD::CreateBuffer(plt, sizeof(RD::RayTraceProperties));
@@ -143,7 +143,7 @@ int main()
 
     RD::Buffer rdImageScratch = RD::CreateBuffer(plt, extent[0] * extent[1] * CHANNEL * sizeof(float));
 
-    float camData[4] = {0.0f, -1.0f, -10.0f, 0.0f};
+    float camData[4] = {0.0f, -1.0f, -10.0f, 3.14f};
     RD::Buffer rdCamData = RD::CreateBuffer(plt, sizeof(camData));
     RD::WriteBuffer(plt, rdCamData, sizeof(camData), camData);
 
@@ -271,6 +271,9 @@ bool RenderSceneConfigUI(CbData *d)
     RD::Material matList[3];
     RD::ReadBuffer(d->plt, d->rdMatData, sizeof(matList), matList);
 
+    RD::RayTraceProperties RTProp;
+    RD::ReadBuffer(d->plt, d->rdRTProp, sizeof(RD::RayTraceProperties), &RTProp);
+
 
     {
         ImGui::Begin("Render Config");
@@ -295,6 +298,9 @@ bool RenderSceneConfigUI(CbData *d)
         updated |= ImGui::SliderFloat4("Albedo##m2", matList[2].albedo, 0.0f, 1.0f);
         updated |= ImGui::SliderFloat2("Metallic, Roughness##m2", &matList[2].metallic, 0.0f, 1.0f);
 
+        ImGui::Text("Debug Mode:");
+        updated |= ImGui::DragInt("Debug", (int*)&RTProp.debug, 1.0f, 0, 10);
+
         ImGui::End();
     }
 
@@ -303,6 +309,7 @@ bool RenderSceneConfigUI(CbData *d)
         RD::WriteBuffer(d->plt, d->rdCamData, sizeof(camData), camData);
         RD::WriteBuffer(d->plt, d->rdSceneData, sizeof(scene), &scene);
         RD::WriteBuffer(d->plt, d->rdMatData, sizeof(matList), matList);
+        RD::WriteBuffer(d->plt, d->rdRTProp, sizeof(RD::RayTraceProperties), &RTProp);
     }
 
     return updated;
@@ -454,7 +461,7 @@ void GetSceneData(RD::SceneProperties* sceneData)
 {
     sceneData->lightCount[0] = 1;
     sceneData->lights[0] = {
-        .direction = {0.0f, -60.0f, -20.0f},
+        .direction = {0.0f, 60.0f, 20.0f},
         .color = {10.0f, 10.0f, 10.0f, 1.0f}
     };
 }

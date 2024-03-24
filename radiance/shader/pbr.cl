@@ -29,14 +29,14 @@ float3 F_Schlick(float cosTheta, float metallic, float3 albedo)
 	return F;
 }
 
-float3 BRDF(float3 L, float3 V, float3 N, float metallic, float roughness, float3 albedo, float3 lightColor)
+float3 BRDF(float3 L, float3 V, float3 N, float metallic, float roughness, float3 albedo)
 {
 	// Precalculate vectors and dot products	
 	float3 H = normalize(V + L);
-	float dotNV = fabs(dot(N, V));
-	float dotNL = fabs(dot(N, L));
-	float dotNH = fabs(dot(N, H));
-	float dotVH = fabs(dot(V, H));
+	float dotNV = clamp(dot(N, V), 0.0f, 1.0f);
+	float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
+	float dotNH = clamp(dot(N, H), 0.0f, 1.0f);
+	float dotVH = clamp(dot(V, H), 0.0f, 1.0f);
 
 	float3 color = {0.0f, 0.0f, 0.0f};
 	if (dot(N, L) > 0.0)
@@ -49,9 +49,9 @@ float3 BRDF(float3 L, float3 V, float3 N, float metallic, float roughness, float
 
 		float3 c_diff = albedo * (1.0f - metallic);
 		float3 f_diffuse  = (1 - F) * (1 / PI) * c_diff;
-		float3 f_specular =      F  * D * G / (4.0f * dotNL * dotNV);
+		float3 f_specular = F * D * G / max(4.0f * dotNL * dotNV, 0.0001f);
 
-		color += (f_diffuse + f_specular) * (dotNL * lightColor);
+		color += (f_diffuse + f_specular) * (dotNL);
 	}
 
 	return color;
