@@ -100,6 +100,13 @@ struct DeviceVertex // mapped
     float x, y, z, w;
 };
 
+struct RayTraceProperties
+{
+    unsigned int totalSamples;
+    unsigned int batchSize;
+    unsigned int depth;
+    unsigned int debug;
+};
 
 struct Material
 {

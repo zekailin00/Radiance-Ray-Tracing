@@ -1,5 +1,6 @@
 
 #include "data.cl"
+#include "math.cl"
 
 struct Payload;
 struct SceneData;
@@ -13,6 +14,7 @@ struct HitData
     unsigned int instanceIndex;         // Top-level instance index (gl_InstanceID)
     unsigned int instanceCustomIndex;   // Top-level instance custom index (gl_InstanceCustomIndexEXT)
     float3 barycentric;
+    float3 translate;
 };
 
 /* User defined begin */
@@ -100,8 +102,12 @@ bool intersect(
                         hitData->hitPoint       = localHitData.hitPoint;
                         hitData->distance       = localHitData.distance;
                         hitData->primitiveIndex = localHitData.primitiveIndex;
-                        hitData->barycentric    = localHitData.barycentric; 
-                        
+                        hitData->barycentric    = localHitData.barycentric;
+
+
+                        hitData->translate.x         = instance->r0.w;
+                        hitData->translate.y         = instance->r1.w;
+                        hitData->translate.z         = instance->r2.w;
                         hitData->instanceIndex       = instance->instanceID;
                         hitData->instanceCustomIndex = instance->customInstanceID;
                     }
@@ -132,7 +138,11 @@ bool intersect(
                         hitData->hitPoint       = intersectPoint;
                         hitData->primitiveIndex = face->primID;
                         hitData->barycentric    = bary;
+
+                        // bool cont = true;
+                        // anyHit(&cont);
                     }
+
                 }
             }
         }

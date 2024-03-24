@@ -1,13 +1,19 @@
-#include <radiance.cl>
+#include "radiance.cl"
 #include "pbr.cl"
 
 struct Payload
 {
-    uchar x;
-    uchar y;
-    uchar color[3];
+    int x; // horizontal pixel index
+    int y; // vertical pixel index
+
+    float3 color;
     bool hit;
-    bool shadowTest;
+
+    bool shadowTest; // Merge light hit test with color shader
+
+    float3 nextFactor;
+    float3 nextRayOrigin;
+    float3 nextRayDirection;
 };
 
 struct SceneData
@@ -19,12 +25,14 @@ struct SceneData
     uint*                      indexData;
     struct Material*           materials;
     struct SceneProperties*    scene;
-    uint*                      depth;
-    struct AccelStruct*        topLevel
+    int                        depth;
+    unsigned int               frameID;
+    struct AccelStruct*        topLevel;
 };
 
 __kernel void raygen(
-    __global uint*                      depth,
+    __global struct RayTraceProperties* RTProp,
+    __global float*                     imageScratch,
     __global uchar*                     image /* <row major> */,
     __global unsigned int*              extent /* <x,y> */,
     __global float*                     camData,
@@ -39,8 +47,8 @@ __kernel void raygen(
     /* the unique global id of the work item for the current pixel */
     const int work_item_id = get_global_id(0);
 
-    int x = work_item_id % (int)extent[0]; /* x-coordinate of the pixel */
-    int y = work_item_id / (int)extent[0]; /* y-coordinate of the pixel */
+    int    x = work_item_id % (int)extent[0]; /* x-coordinate of the pixel */
+    int    y = work_item_id / (int)extent[0]; /* y-coordinate of the pixel */
     float fx = ((float)x / (float)extent[0]); /* convert int to float in range [0-1] */
     float fy = ((float)y / (float)extent[1]); /* convert int to float in range [0-1] */
 
@@ -56,100 +64,114 @@ __kernel void raygen(
 
     float3 origin = {camData[0], camData[1], camData[2]};
 
-    struct Payload payload;
-    payload.x = (int)(fx * 256);
-    payload.y = (int)(fy * 256);
-    payload.color[0] = 0.0f;
-    payload.color[1] = 0.0f;
-    payload.color[2] = 0.0f;
-    payload.shadowTest = false;
-
-    struct SceneData sceneData;
-    sceneData.camData       = camData;
-    sceneData.vertexData    = vertexData;
-    sceneData.normalData    = normalData;
-    sceneData.uvData        = uvData;
-    sceneData.indexData     = indexData;
-    sceneData.materials     = materials;
-    sceneData.scene         = scene;
-    sceneData.depth         = depth;
-    sceneData.topLevel      = topLevel;
-
-    traceRay(topLevel, origin, dir, 0.01, 1000, &payload, &sceneData);
-
+    // Index for accessing image data
     const int CHANNEL = 4;
     int index = (int)(extent[0] * (extent[1] - y - 1) + (extent[0] - x - 1));
-    image[CHANNEL * index + 0] = payload.color[0];
-    image[CHANNEL * index + 1] = payload.color[1];
-    image[CHANNEL * index + 2] = payload.color[2];
+
+
+    int iteration = RTProp->batchSize;
+    unsigned int frameID = RTProp->totalSamples;
+    while (iteration > 0)
+    {
+        iteration--;
+        // sceneData.depth = RTProp->depth;
+        // sceneData.frameID = frameID;
+        // payload.nextRayOrigin = origin;
+        // payload.nextRayDirection = dir;
+
+        struct Payload payload;
+        payload.x = x;
+        payload.y = y;
+        payload.color[0] = 0.0f;
+        payload.color[1] = 0.0f;
+        payload.color[2] = 0.0f;
+        payload.shadowTest = false;
+        payload.nextFactor = 1.0f;
+        payload.nextRayOrigin = origin;
+        payload.nextRayDirection = dir;
+
+        struct SceneData sceneData;
+        sceneData.camData       = camData;
+        sceneData.vertexData    = vertexData;
+        sceneData.normalData    = normalData;
+        sceneData.uvData        = uvData;
+        sceneData.indexData     = indexData;
+        sceneData.materials     = materials;
+        sceneData.scene         = scene;
+        sceneData.depth         = RTProp->depth;
+        sceneData.frameID       = frameID;
+        sceneData.topLevel      = topLevel;
+
+        float3 color = 0.0f;
+        float3 contribution = 1.0f;
+
+        while (sceneData.depth > 0)
+        {
+            // printf("depth:<%d>\n", sceneData.depth);
+            sceneData.depth--;
+        
+            traceRay(topLevel, payload.nextRayOrigin, payload.nextRayDirection,
+                0.01, 1000, &payload, &sceneData);
+
+            color += contribution * payload.color;
+            contribution *= payload.nextFactor;
+        }
+
+        // HDR mapping
+        color = color / (color + 1.0f);
+
+
+        if (frameID == 0)
+        {
+            imageScratch[CHANNEL * index + 0] = color[0];
+            imageScratch[CHANNEL * index + 1] = color[1];
+            imageScratch[CHANNEL * index + 2] = color[2];
+        }
+        else
+        {
+            float pixel;
+            pixel = imageScratch[CHANNEL * index + 0];
+            imageScratch[CHANNEL * index + 0] = (frameID * pixel + color[0]) / (frameID + 1);
+
+            pixel = imageScratch[CHANNEL * index + 1];
+            imageScratch[CHANNEL * index + 1] = (frameID * pixel + color[1]) / (frameID + 1);
+            
+            pixel = imageScratch[CHANNEL * index + 2];
+            imageScratch[CHANNEL * index + 2] = (frameID * pixel + color[2]) / (frameID + 1);
+        }
+        frameID++;
+    }
+
+    float3 color = {
+        imageScratch[CHANNEL * index + 0],
+        imageScratch[CHANNEL * index + 1],
+        imageScratch[CHANNEL * index + 2]
+    };
+
+    // Gamma correct
+    color = pow(color, 0.4545f);
+
+    image[CHANNEL * index + 0] = (int)(color[0] * 255);
+    image[CHANNEL * index + 1] = (int)(color[1] * 255);
+    image[CHANNEL * index + 2] = (int)(color[2] * 255);
     image[CHANNEL * index + 3] = 255;
 }
 
+// printNormalDebug(float3 n0, float3 n1, float3 n2, float3 bary)
+// {
+//     printf( "n0: <%f, %f, %f>\n"
+//             "n1: <%f, %f, %f>\n"
+//             "n2: <%f, %f, %f>\n"
+//             , n0[0], n0[1], n0[2]
+//             , n1[0], n1[1], n1[2]
+//             , n2[0], n2[1], n2[2]);
+// }
 
-printNormalDebug(float3 n0, float3 n1, float3 n2, float3 bary)
-{
-    printf( "n0: <%f, %f, %f>\n"
-            "n1: <%f, %f, %f>\n"
-            "n2: <%f, %f, %f>\n"
-            , n0[0], n0[1], n0[2]
-            , n1[0], n1[1], n1[2]
-            , n2[0], n2[1], n2[2]);
-}
-
-printIndexDebug(uint idx0, uint idx1, uint idx2)
-{
-    printf( "idx: <%d, %d, %d>\n"
-            , idx0, idx1, idx2);
-}
-
-float4 CalculatePixelColor(
-    struct Material* material, struct SceneProperties* scene,
-    float3* hitPos, float3* viewPos, float3* normal/*, float2* texCoords*/)
-{
-	float3 N = normalize(*normal);
-	float3 V = normalize(*viewPos - *hitPos);
-
-    float metallicFrag;
-    float roughnessFrag;
-    float3 albedoFrag;
-
-    if (material->useMetallicTex == 0)
-        metallicFrag = material->metallic;
-    // else
-    //     metallicFrag = texture(MetallicTexture, texCoords).x;
-
-    if (material->useRoughnessTex == 0)
-        roughnessFrag = clamp(material->roughness, 0.0f, 1.0f);
-    // else
-    //     roughnessFrag = clamp(texture(RoughnessTexture, texCoords).x, 0.0, 1.0);
-
-    if (material->useAlbedoTex == 0)
-        albedoFrag = material->albedo.rgb;
-    // else
-    //     albedoFrag = texture(AlbedoTexture, texCoords).rgb;
-
-	// Specular contribution
-	float3 Lo = {0.0f, 0.0f, 0.0f};
-	for (int i = 0; i < scene->lightCount.x; i++)
-    {
-		float3 L = normalize(scene->lights[i].direction.xyz);
-        float3 lightColor = scene->lights[i].color.rgb;
-		Lo += BRDF(L, V, N, metallicFrag, roughnessFrag, albedoFrag, lightColor);
-	}
-
-	// Combine with ambient
-	float3 color = albedoFrag * 0.02f;
-	color += Lo;
-
-    // HDR mapping
-    color = color / (color + 1.0f);
-
-	// Gamma correct
-	color = pow(color, 0.4545f);
-
-    float4 fragColor = {color.xyz, 1.0f};
-    return fragColor;
-}
+// printIndexDebug(uint idx0, uint idx1, uint idx2)
+// {
+//     printf( "idx: <%d, %d, %d>\n"
+//             , idx0, idx1, idx2);
+// }
 
 void hit(struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData)
 {
@@ -177,6 +199,7 @@ void hit(struct Payload* payload, struct HitData* hitData, struct SceneData* sce
     int matIndex = hitData->instanceIndex % 3;
     struct Material* material = &sceneData->materials[matIndex];
 
+
     float metallicFrag;
     if (material->useMetallicTex == 0)
         metallicFrag = material->metallic;
@@ -198,26 +221,27 @@ void hit(struct Payload* payload, struct HitData* hitData, struct SceneData* sce
 
     struct SceneProperties* scene = sceneData->scene;
     float3 dir = normalize(-scene->lights[0].direction.xyz);
-    float3 origin = hitData->hitPoint + 0.001f * dir; // FIXME: hitpoint is local
+
+    float3 normal = hitData->barycentric.x * n0 +
+                    hitData->barycentric.y * n1 + 
+                    hitData->barycentric.z * n2;
+    float3 N = normalize(normal);
+
+    float3 origin = hitData->hitPoint + hitData->translate + N * 0.0001f;
+    float3 viewPos = {
+        sceneData->camData[0],
+        sceneData->camData[1],
+        sceneData->camData[2]};
+    float3 V = normalize(viewPos - origin);
+    float3 L = normalize(scene->lights[0].direction.xyz);
+
     payload->shadowTest = true;
     traceRay(sceneData->topLevel, origin, dir, 0.01, 1000, payload, sceneData);
+    payload->shadowTest = false;
 
     float3 color = {0.0f, 0.0f, 0.0f};
     if (payload->hit)
     {
-        float3 hitPos = hitData->hitPoint;
-        float3 viewPos = {
-            sceneData->camData[0],
-            sceneData->camData[1],
-            sceneData->camData[2]};
-        float3 normal = hitData->barycentric.x * n0 +
-                        hitData->barycentric.y * n1 + 
-                        hitData->barycentric.z * n2;
-
-        float3 N = normalize(normal);
-        float3 V = normalize(viewPos - hitPos);
-        float3 L = normalize(scene->lights[0].direction.xyz);
-
         // Specular contribution
         float3 Lo = {0.0f, 0.0f, 0.0f};
 
@@ -228,18 +252,36 @@ void hit(struct Payload* payload, struct HitData* hitData, struct SceneData* sce
         color += Lo;
     }
 
+#ifndef RAY_TRACING
     // Combine with ambient
-    color += albedoFrag * 0.05f;
+    // color += albedoFrag * 0.05f;
+#endif
 
-    // HDR mapping
-    color = color / (color + 1.0f);
+    payload->color[0] = color.x;
+    payload->color[1] = color.y;
+    payload->color[2] = color.z;
 
-    // Gamma correct
-    color = pow(color, 0.4545f);
+    //////////////////////////////////
+    //      Global illumination     //
+    //////////////////////////////////
 
-    payload->color[0] = color.x * 255;
-    payload->color[1] = color.y * 255;
-    payload->color[2] = color.z * 255;
+    // different random value for each pixel and each frame
+    uint3 randInput = {sceneData->frameID, (uint)get_global_id(0), sceneData->depth};
+    float3 random = random_pcg3d(randInput);
+    // printf("input: <%d, %d, %d>\nrandom: <%f, %f, %f>\n",
+    //     randInput.x, randInput.y, randInput.z,
+    //     random.x, random.y, random.z);
+    
+    // sample indirect direction
+    float3 nextFactor = {0.0f, 0.0f, 0.0f};
+    float3 nextDir = sampleMicrofacetBRDF(V, N, 
+        albedoFrag, metallicFrag, roughnessFrag,
+        random, &nextFactor);
+
+    // indirect ray
+    payload->nextRayOrigin = origin;
+    payload->nextRayDirection = nextDir;
+    payload->nextFactor = nextFactor;
 
     // // [debug] barycentric viz
     // payload->color[0] = hitData->barycentric.x * 255;
@@ -260,8 +302,8 @@ void hit(struct Payload* payload, struct HitData* hitData, struct SceneData* sce
 
 void miss(struct Payload* payload, struct SceneData* sceneData)
 {
-    payload->color[0] = 75.0f;
-    payload->color[1] = 75.0f;
-    payload->color[2] = payload->y * 0.7 + 255 * 0.3;
+    payload->color[0] = 0.5f;
+    payload->color[1] = 0.5f;
+    payload->color[2] = 0.5f;
     payload->hit = false;
 }

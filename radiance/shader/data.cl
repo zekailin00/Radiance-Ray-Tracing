@@ -70,6 +70,14 @@ struct Instance // 5 blocks
     unsigned int SBTOffset, instanceID, customInstanceID, instanceOffset;
 };
 
+struct RayTraceProperties
+{
+    unsigned int totalSamples;
+    unsigned int batchSize;
+    unsigned int depth;
+    unsigned int debug;
+};
+
 typedef float4 Vertex; // 1 block
 
 #define TYPE_INST 1

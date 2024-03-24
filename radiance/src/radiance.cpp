@@ -102,9 +102,9 @@ ShaderModule CreateShaderModule(Platform* platform, char* code, unsigned int siz
     includeDir = "-g -I" + includeDir;
     if(clBuildProgram(tracingProgram, 1, &ctx->device_id, includeDir.c_str(), NULL, NULL) < 0)
     {
-        char log[1000];
+        char log[10000];
         size_t retSize;
-        clGetProgramBuildInfo(tracingProgram, ctx->device_id, CL_PROGRAM_BUILD_LOG, 1000, log, &retSize);
+        clGetProgramBuildInfo(tracingProgram, ctx->device_id, CL_PROGRAM_BUILD_LOG, 10000, log, &retSize);
         printf("error output: %s\n", log);
 
         throw;

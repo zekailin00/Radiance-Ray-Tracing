@@ -7,7 +7,7 @@
 
 #include "inspector.h"
 
-#define OFF_SCREEN
+// #define OFF_SCREEN
 
 bool modelLoader(
     std::vector<RD::Vec3>& vertices,
@@ -76,6 +76,7 @@ struct CbData
     RD::Buffer rdCamData;
     RD::Buffer rdMatData;
     RD::Buffer rdSceneData;
+    RD::Buffer rdRTProp;
 };
 
 void render(void* data, unsigned char** image, int* out_width, int* out_height);
@@ -83,7 +84,7 @@ void render(void* data, unsigned char** image, int* out_width, int* out_height);
 void GetInstanceList(std::vector<RD::Instance>& instanceList, RD::BottomAccelStruct rdBottomAS);
 void GetMaterialList(std::vector<RD::Material>& materialList);
 void GetSceneData(RD::SceneProperties* sceneData);
-void RenderSceneConfigUI(CbData *d);
+bool RenderSceneConfigUI(CbData *d);
 
 int main()
 {
@@ -127,13 +128,20 @@ int main()
 
 
     /* Define pipeline data inputs */
-    unsigned int depth = 5;
-    RD::Buffer rdDepth = RD::CreateBuffer(plt, sizeof(depth));
-    RD::WriteBuffer(plt, rdDepth, sizeof(depth), &depth);
+    RD::RayTraceProperties RTProp = {
+        .totalSamples = 0,
+        .batchSize = 1,
+        .depth = 8,
+        .debug = 0
+    };
+    RD::Buffer rdRTProp = RD::CreateBuffer(plt, sizeof(RD::RayTraceProperties));
+    RD::WriteBuffer(plt, rdRTProp, sizeof(RD::RayTraceProperties), &RTProp);
 
     RD::Buffer rdImage   = RD::CreateImage(plt, extent[0], extent[1]);
     RD::Buffer rdExtent  = RD::CreateBuffer(plt, sizeof(extent));
     RD::WriteBuffer(plt, rdExtent, sizeof(extent), extent);
+
+    RD::Buffer rdImageScratch = RD::CreateBuffer(plt, extent[0] * extent[1] * CHANNEL * sizeof(float));
 
     float camData[4] = {0.0f, -1.0f, -10.0f, 0.0f};
     RD::Buffer rdCamData = RD::CreateBuffer(plt, sizeof(camData));
@@ -169,12 +177,12 @@ int main()
 
     /* Build and configure pipeline */
     RD::DescriptorSet descSet = RD::CreateDescriptorSet({
-        rdDepth,      rdImage,      rdExtent,   rdCamData,
-        rdVertexData, rdNormalData, rdUVData,
-        rdIndexData,  rdMatData,    rdSceneData,
+        rdRTProp,     rdImageScratch, rdImage,      rdExtent,   rdCamData,
+        rdVertexData, rdNormalData,   rdUVData,
+        rdIndexData,  rdMatData,      rdSceneData,
         rdTopAS});
     RD::PipelineLayout layout = RD::CreatePipelineLayout({
-        RD::BUFFER_TYPE, RD::IMAGE_TYPE,  RD::BUFFER_TYPE, RD::BUFFER_TYPE,
+        RD::BUFFER_TYPE, RD::BUFFER_TYPE, RD::IMAGE_TYPE,  RD::BUFFER_TYPE, RD::BUFFER_TYPE,
         RD::BUFFER_TYPE, RD::BUFFER_TYPE, RD::BUFFER_TYPE,
         RD::BUFFER_TYPE, RD::BUFFER_TYPE, RD::BUFFER_TYPE,
         RD::ACCEL_STRUCT_TYPE});
@@ -184,6 +192,10 @@ int main()
         {shader},   // ShaderModule
         {}          // ShaderGroup
     });
+
+    // shader.cl: func1, 2, 3,
+    // shader.json {}, {group}
+    // compile: -> .bin
 
     /* Ray tracing */
     RD::BindPipeline(plt, pipeline);    
@@ -198,14 +210,15 @@ int main()
 
         .rdCamData = rdCamData,
         .rdMatData = rdMatData,
-        .rdSceneData = rdSceneData
+        .rdSceneData = rdSceneData,
+        .rdRTProp = rdRTProp
     };
 
 #ifdef OFF_SCREEN
     render((void*)&data, nullptr, nullptr, nullptr);
     stbi_write_jpg("output.jpg", extent[0], extent[1], RD_CHANNEL, data.image, 100);
 #else
-    // renderLoop(render, &data);
+    renderLoop(render, &data);
 #endif
 }
 
@@ -214,15 +227,30 @@ int main()
 void render(void* data, unsigned char** image, int* out_width, int* out_height)
 {
     CbData *d = (CbData*) data;
+    bool updated = false;
 
 #ifndef OFF_SCREEN
-    RenderSceneConfigUI(d);
+    updated = RenderSceneConfigUI(d);
 #endif
 
     RD::TraceRays(d->plt, 0,0,0, d->extent[0], d->extent[1]);
 
     /* Fetch result */
     RD::ReadBuffer(d->plt, d->rdImage, d->imageSize, d->image);
+
+    /* Update frame sample counts */
+    RD::RayTraceProperties RTProp;
+    RD::ReadBuffer(d->plt, d->rdRTProp, sizeof(RD::RayTraceProperties), &RTProp);
+    if (updated)
+    {
+        RTProp.totalSamples = 0;
+    }
+    else
+    {
+        RTProp.totalSamples += RTProp.batchSize;
+    }
+    RD::WriteBuffer(d->plt, d->rdRTProp, sizeof(RD::RayTraceProperties), &RTProp);
+
 
 #ifndef OFF_SCREEN
     *image = d->image;
@@ -231,8 +259,9 @@ void render(void* data, unsigned char** image, int* out_width, int* out_height)
 #endif
 }
 
-void RenderSceneConfigUI(CbData *d)
+bool RenderSceneConfigUI(CbData *d)
 {
+    bool updated = false;
     float camData[4];
     RD::ReadBuffer(d->plt, d->rdCamData, sizeof(camData), camData);
 
@@ -247,39 +276,44 @@ void RenderSceneConfigUI(CbData *d)
         ImGui::Begin("Render Config");
 
         ImGui::Text("Camera:");
-        ImGui::SliderFloat3("Camera Position", camData, -20.0f, 20.0f);
-        ImGui::SliderFloat("Camera Rotation", &camData[3], -10.0f, 10.0f);
+        updated |= ImGui::SliderFloat3("Camera Position", camData, -20.0f, 20.0f);
+        updated |= ImGui::SliderFloat("Camera Rotation", &camData[3], -10.0f, 10.0f);
 
         ImGui::Text("Light:");
-        ImGui::SliderFloat4("Light Direction", scene.lights[0].direction, -100.0f, 100.0f);
-        ImGui::SliderFloat4("Light Color", scene.lights[0].color, 0.0f, 100.0f);
+        updated |= ImGui::SliderFloat4("Light Direction", scene.lights[0].direction, -100.0f, 100.0f);
+        updated |= ImGui::SliderFloat4("Light Color", scene.lights[0].color, 0.0f, 100.0f);
 
         ImGui::Text("Material 0:");
-        ImGui::SliderFloat4("Albedo##m0", matList[0].albedo, 0.0f, 1.0f);
-        ImGui::SliderFloat2("Metallic, Roughness##m0", &matList[0].metallic, 0.0f, 1.0f);
+        updated |= ImGui::SliderFloat4("Albedo##m0", matList[0].albedo, 0.0f, 1.0f);
+        updated |= ImGui::SliderFloat2("Metallic, Roughness##m0", &matList[0].metallic, 0.0f, 1.0f);
 
         ImGui::Text("Material 1:");
-        ImGui::SliderFloat4("Albedo##m1", matList[1].albedo, 0.0f, 1.0f);
-        ImGui::SliderFloat2("Metallic, Roughness##m1", &matList[1].metallic, 0.0f, 1.0f);
+        updated |= ImGui::SliderFloat4("Albedo##m1", matList[1].albedo, 0.0f, 1.0f);
+        updated |= ImGui::SliderFloat2("Metallic, Roughness##m1", &matList[1].metallic, 0.0f, 1.0f);
 
         ImGui::Text("Material 2:");
-        ImGui::SliderFloat4("Albedo##m2", matList[2].albedo, 0.0f, 1.0f);
-        ImGui::SliderFloat2("Metallic, Roughness##m2", &matList[2].metallic, 0.0f, 1.0f);
+        updated |= ImGui::SliderFloat4("Albedo##m2", matList[2].albedo, 0.0f, 1.0f);
+        updated |= ImGui::SliderFloat2("Metallic, Roughness##m2", &matList[2].metallic, 0.0f, 1.0f);
 
         ImGui::End();
     }
 
-    RD::WriteBuffer(d->plt, d->rdCamData, sizeof(camData), camData);
-    RD::WriteBuffer(d->plt, d->rdSceneData, sizeof(scene), &scene);
-    RD::WriteBuffer(d->plt, d->rdMatData, sizeof(matList), matList);
+    if (updated)
+    {
+        RD::WriteBuffer(d->plt, d->rdCamData, sizeof(camData), camData);
+        RD::WriteBuffer(d->plt, d->rdSceneData, sizeof(scene), &scene);
+        RD::WriteBuffer(d->plt, d->rdMatData, sizeof(matList), matList);
+    }
+
+    return updated;
 }
 
 void GetMaterialList(std::vector<RD::Material>& materialList)
 {
     materialList.push_back({
-        .albedo = {1.0f, 0.0f, 0.0f, 1.0f},
+        .albedo = {1.0f, 1.0f, 0.0f, 1.0f},
         .metallic = 0.0,
-        .roughness = 0.5,
+        .roughness = 0.3,
         ._1 = 0.0f,
         ._2 = 0.0f,
         .useAlbedoTex = 0.0f,
@@ -289,9 +323,9 @@ void GetMaterialList(std::vector<RD::Material>& materialList)
     });
 
     materialList.push_back({
-        .albedo = {0.0f, 1.0f, 0.0f, 1.0f},
-        .metallic = 0.5,
-        .roughness = 0.5,
+        .albedo = {0.0f, 1.0f, 1.0f, 1.0f},
+        .metallic = 0.95,
+        .roughness = 0.1,
         ._1 = 0.0f,
         ._2 = 0.0f,
         .useAlbedoTex = 0.0f,
@@ -301,9 +335,9 @@ void GetMaterialList(std::vector<RD::Material>& materialList)
     });
 
     materialList.push_back({
-        .albedo = {0.0f, 0.0f, 1.0f, 1.0f},
+        .albedo = {1.0f, 0.0f, 1.0f, 1.0f},
         .metallic = 0.0,
-        .roughness = 0.25,
+        .roughness = 0.9,
         ._1 = 0.0f,
         ._2 = 0.0f,
         .useAlbedoTex = 0.0f,
@@ -420,7 +454,7 @@ void GetSceneData(RD::SceneProperties* sceneData)
 {
     sceneData->lightCount[0] = 1;
     sceneData->lights[0] = {
-        .direction = {0.0f, -100.0f, -20.0f},
-        .color = {1.0f, 1.0f, 1.0f, 1.0f}
+        .direction = {0.0f, -60.0f, -20.0f},
+        .color = {10.0f, 10.0f, 10.0f, 1.0f}
     };
 }
