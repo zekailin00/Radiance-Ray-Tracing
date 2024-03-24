@@ -74,10 +74,6 @@ __kernel void raygen(
     while (iteration > 0)
     {
         iteration--;
-        // sceneData.depth = RTProp->depth;
-        // sceneData.frameID = frameID;
-        // payload.nextRayOrigin = origin;
-        // payload.nextRayDirection = dir;
 
         struct Payload payload;
         payload.x = x;
@@ -98,28 +94,36 @@ __kernel void raygen(
         sceneData.indexData     = indexData;
         sceneData.materials     = materials;
         sceneData.scene         = scene;
-        sceneData.depth         = RTProp->depth;
+        sceneData.depth         = 0;
         sceneData.frameID       = frameID;
         sceneData.topLevel      = topLevel;
 
         float3 color = 0.0f;
         float3 contribution = 1.0f;
 
-        while (sceneData.depth > 0)
+        while (sceneData.depth < RTProp->depth)
         {
-            // printf("depth:<%d>\n", sceneData.depth);
-            sceneData.depth--;
-        
             traceRay(topLevel, payload.nextRayOrigin, payload.nextRayDirection,
                 0.01, 1000, &payload, &sceneData);
 
-            color += contribution * payload.color;
-            contribution *= payload.nextFactor;
+            if (payload.hit)
+            {
+                color += contribution * payload.color;
+                contribution *= payload.nextFactor;
+            }
+            else if (sceneData.depth == 0)
+            {
+                // No direct hit, set background color.
+                color = payload.color;
+            }
+            else
+            {
+                // No hit, stop tracing.
+                break;
+            }
+            sceneData.depth++;
+            payload.hit = false;
         }
-
-        // HDR mapping
-        color = color / (color + 1.0f);
-
 
         if (frameID == 0)
         {
@@ -148,6 +152,11 @@ __kernel void raygen(
         imageScratch[CHANNEL * index + 2]
     };
 
+    // HDR mapping
+    // FIXME: when to place this?
+    color = color / (color + 0.5f);
+
+
     // Gamma correct
     color = pow(color, 0.4545f);
 
@@ -175,6 +184,7 @@ __kernel void raygen(
 
 void hit(struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData)
 {
+    // Shadow test
     payload->hit = true;
     if (payload->shadowTest)
         return;
@@ -251,11 +261,10 @@ void hit(struct Payload* payload, struct HitData* hitData, struct SceneData* sce
 
         color += Lo;
     }
+    payload->hit = true; // reset shadow test
 
-#ifndef RAY_TRACING
     // Combine with ambient
-    // color += albedoFrag * 0.05f;
-#endif
+    color += albedoFrag * 0.05f;
 
     payload->color[0] = color.x;
     payload->color[1] = color.y;
