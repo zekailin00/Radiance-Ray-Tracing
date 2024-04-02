@@ -9,8 +9,6 @@ struct Payload
     float3 color;
     bool hit;
 
-    bool shadowTest; // Merge light hit test with color shader
-
     float3 nextFactor;
     float3 nextRayOrigin;
     float3 nextRayDirection;
@@ -88,7 +86,6 @@ __kernel void raygen(
         payload.color[0] = 0.0f;
         payload.color[1] = 0.0f;
         payload.color[2] = 0.0f;
-        payload.shadowTest = false;
         payload.nextFactor = 1.0f;
         payload.nextRayOrigin = origin;
         payload.nextRayDirection = dir;
@@ -111,7 +108,7 @@ __kernel void raygen(
 
         while (sceneData.depth < RTProp->depth)
         {
-            traceRay(topLevel, payload.nextRayOrigin, payload.nextRayDirection,
+            traceRay(topLevel, 1, 3, payload.nextRayOrigin, payload.nextRayDirection,
                 0.01, 1000, &payload, &sceneData);
 
             if (payload.hit)
@@ -122,7 +119,7 @@ __kernel void raygen(
             else if (sceneData.depth == 0)
             {
                 // No direct hit, set background color.
-                color = 0.5f;
+                color = payload.color;
             }
             else
             {
@@ -197,13 +194,16 @@ __kernel void raygen(
 //             , idx0, idx1, idx2);
 // }
 
-void hit(struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData)
+void shadow(struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData)
 {
     // Shadow test
     payload->hit = true;
-    if (payload->shadowTest)
-        return;
+    payload->color = 0.0f;
+}
 
+void material(struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData)
+{
+    payload->hit = true;
 
     float* vertexData = sceneData->vertexData;
     uint* indexData = sceneData->indexData;
@@ -259,12 +259,12 @@ void hit(struct Payload* payload, struct HitData* hitData, struct SceneData* sce
     float3 V = normalize(viewPos - origin);
     float3 L = normalize(-scene->lights[0].direction.xyz);
 
-    payload->shadowTest = true;
-    traceRay(sceneData->topLevel, origin, L, 0.01, 1000, payload, sceneData);
-    payload->shadowTest = false;
+    // Shadow test 
+    struct Payload shadowPayload;
+    traceRay(sceneData->topLevel, 2, 4, origin, L, 0.01, 1000, &shadowPayload, sceneData);
 
     float3 color = {0.0f, 0.0f, 0.0f};
-    if (!payload->hit)
+    if (!shadowPayload.hit)
     {
         // Specular contribution
         float3 Lo = {0.0f, 0.0f, 0.0f};
@@ -275,7 +275,6 @@ void hit(struct Payload* payload, struct HitData* hitData, struct SceneData* sce
 
         color += Lo;
     }
-    payload->hit = true; // reset shadow test
 
     // Combine with ambient
     color += albedoFrag * 0.05f;
@@ -344,11 +343,9 @@ void hit(struct Payload* payload, struct HitData* hitData, struct SceneData* sce
     else if (sceneData->debug == 6)
     {
         // Shadow test: white color if no occlusion
-        payload->shadowTest = true;
-        traceRay(sceneData->topLevel, origin, L, 0.01, 1000, payload, sceneData);
-        payload->shadowTest = false;
-        payload->color = payload->hit? 0.0f: 1.0f;
-        payload->hit = true; // reset shadow test
+        struct Payload shadowPayload;
+        traceRay(sceneData->topLevel, 2, 4, origin, L, 0.01, 1000, &shadowPayload, sceneData);
+        payload->color = shadowPayload.color;
     }
     else if (sceneData->debug == 7)
     {
@@ -362,7 +359,40 @@ void hit(struct Payload* payload, struct HitData* hitData, struct SceneData* sce
     // payload->color[2] = (uchar)hitData->instanceCustomIndex;
 }
 
-void miss(struct Payload* payload, struct SceneData* sceneData)
+void shadowMiss(struct Payload* payload, struct SceneData* sceneData)
 {
     payload->hit = false;
+    payload->color = 1.0f;
+}
+
+void environment(struct Payload* payload, struct SceneData* sceneData)
+{
+    payload->hit = false;
+    payload->color.x = 0.2;
+    payload->color.y = 0.2;
+    payload->color.z = 0.5;
+}
+
+
+// case @<index>:@<funct>(payload, &hitData, sceneData);break;
+void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData)
+{
+    int index = hitData->instanceSBTOffset + sbtRecordOffset;
+    switch (index)
+    {
+        case 1:material(payload, hitData, sceneData);break;
+        case 2:shadow(payload, hitData, sceneData);break;
+        default: printf("Error: No hit shader found.");
+    }
+}
+
+// case @<index>:@<funct>(payload, sceneData);break;
+void callMiss(int missIndex, struct Payload* payload, struct SceneData* sceneData)
+{
+    switch (missIndex)
+    {
+        case 3:environment(payload, sceneData);break;
+        case 4:shadowMiss(payload, sceneData);break;
+        default: printf("Error: No miss shader found.");
+    }
 }

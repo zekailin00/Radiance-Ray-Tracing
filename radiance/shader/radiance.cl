@@ -13,14 +13,18 @@ struct HitData
     unsigned int primitiveIndex;        // Bottom-level triangle index (gl_PrimitiveID)
     unsigned int instanceIndex;         // Top-level instance index (gl_InstanceID)
     unsigned int instanceCustomIndex;   // Top-level instance custom index (gl_InstanceCustomIndexEXT)
+    unsigned int instanceSBTOffset;     // VkAccelerationStructureInstanceKHR::instanceShaderBindingTableRecordOffset
     float3 barycentric;
     float3 translate;
 };
 
 /* User defined begin */
 struct Payload;
-void hit (struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData);
-void miss(struct Payload* ray, struct SceneData* sceneData);
+// void hit (struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData);
+// void miss(struct Payload* ray, struct SceneData* sceneData);
+
+void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData);
+void callMiss(int missIndex, struct Payload* payload, struct SceneData* sceneData);
 /* User defined end */
 
 
@@ -110,6 +114,7 @@ bool intersect(
                         hitData->translate.z         = instance->r2.w;
                         hitData->instanceIndex       = instance->instanceID;
                         hitData->instanceCustomIndex = instance->customInstanceID;
+                        hitData->instanceSBTOffset   = instance->SBTOffset;
                     }
                 }
             }
@@ -213,6 +218,7 @@ bool intersectTriangle(float3 origin, float3 direction,
 //!raygen 
 void traceRay(
     struct AccelStruct* topLevel,
+    int sbtRecordOffset, int missIndex,
     float3 origin,
     float3 direction,
     float Tmin, float Tmax,
@@ -222,13 +228,38 @@ void traceRay(
     struct HitData hitData;
     if (intersect(topLevel, origin, direction, Tmin, Tmax, &hitData, 1))
     {
-        hit(payload, &hitData, sceneData);
+        callHit(sbtRecordOffset, payload, &hitData, sceneData);
     }
     else
     {
-        miss(payload, sceneData);
+        callMiss(missIndex, payload, sceneData);
     }
 }
+
+/***********************************************************************************
+// case @<index>:@<funct>(payload, &hitData, sceneData);break;
+void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData)
+{
+    int index = hitData->instanceSBTOffset + sbtRecordOffset;
+    switch (index)
+    {
+        @<insert>
+        default: printf("Error: No hit shader found.");
+    }
+}
+
+
+
+// case @<index>:@<funct>(payload, sceneData);break;
+void callMiss(int missIndex, struct Payload* ray, struct SceneData* sceneData)
+{
+    switch (missIndex)
+    {
+         @<insert>
+         default: printf("Error: No miss shader found.");
+    }
+}
+***********************************************************************************************/
 
 // /**
 //  * Return direction of range [-0.5, 0.5] for both x and y axes
