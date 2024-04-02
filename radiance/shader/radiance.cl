@@ -260,20 +260,3 @@ void callMiss(int missIndex, struct Payload* ray, struct SceneData* sceneData)
     }
 }
 ***********************************************************************************************/
-
-// /**
-//  * Return direction of range [-0.5, 0.5] for both x and y axes
-//  * TODO: support super-sampling
-//  */
-// void GetDirection(uint2 extent, float2* out_direction)
-// {
-//     const int work_item_id = get_global_id(0);
-
-//     int x = work_item_id % (int)extent[0]; /* x-coordinate of the pixel */
-//     int y = work_item_id / (int)extent[0]; /* y-coordinate of the pixel */
-//     float fx = ((float)x / (float)extent[0]); /* convert int to float in range [0-1] */
-//     float fy = ((float)y / (float)extent[1]); /* convert int to float in range [0-1] */
-
-//     float2 direction = {fx - 0.5, fy - 0.5f};
-//     *out_direction = direction;
-// }

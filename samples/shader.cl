@@ -374,25 +374,27 @@ void environment(struct Payload* payload, struct SceneData* sceneData)
 }
 
 
-// case @<index>:@<funct>(payload, &hitData, sceneData);break;
 void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData)
 {
     int index = hitData->instanceSBTOffset + sbtRecordOffset;
     switch (index)
     {
-        case 1:material(payload, hitData, sceneData);break;
-        case 2:shadow(payload, hitData, sceneData);break;
+		case 1:material(payload, hitData, sceneData);break;
+		case 2:shadow(payload, hitData, sceneData);break;
+
         default: printf("Error: No hit shader found.");
     }
 }
 
-// case @<index>:@<funct>(payload, sceneData);break;
+
 void callMiss(int missIndex, struct Payload* payload, struct SceneData* sceneData)
 {
     switch (missIndex)
     {
-        case 3:environment(payload, sceneData);break;
-        case 4:shadowMiss(payload, sceneData);break;
+		case 3:environment(payload, sceneData);break;
+		case 4:shadowMiss(payload, sceneData);break;
+
         default: printf("Error: No miss shader found.");
     }
 }
+
