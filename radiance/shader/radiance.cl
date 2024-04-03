@@ -34,25 +34,15 @@ bool intersectTriangle(float3 origin, float3 direction,
 bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax);
 
 
-#define BVH_STACK_SIZE 12
+#define BVH_STACK_SIZE 33
 
 bool intersect(
-    struct AccelStruct* accelStruct,
-    float3 origin, float3 direction,
-    float Tmin, float Tmax, struct HitData* hitData, int depth)
+    struct AccelStruct* accelStruct, float3 origin, float3 direction,
+    float Tmin, float Tmax, struct HitData* hitData)
 {
-	// Closest hit data
-    float bestFaceDist = FLT_MAX;
-
-    if (depth > 2)
-    {
-        printf("Interset depth:%d\n", depth);
-        return false;
-    }
-
-    // Stack pointing to BVH node index
-	unsigned int stack[BVH_STACK_SIZE];
-	int stackIdx = 0; // Always point to the first empty element
+    bool hasIntersected = false;
+	unsigned int stack[BVH_STACK_SIZE];     // Stack pointing to BVH node index
+	int stackIdx = 0;                       // Always point to the first empty element
 	stack[stackIdx++] = 0;
 
 	// while the stack is not empty
@@ -95,27 +85,25 @@ bool intersect(
                 float3 localOrigin = origin - position;
                 float3 localDir = direction;
 
-                struct HitData localHitData;
-                if (intersect(botAccelStruct, localOrigin, localDir, Tmin, Tmax, &localHitData, depth + 1))
+                unsigned int instanceIndex          = hitData->instanceIndex;         // Top-level instance index (gl_InstanceID)
+                unsigned int instanceCustomIndex    = hitData->instanceCustomIndex;   // Top-level instance custom index (gl_InstanceCustomIndexEXT)
+                unsigned int instanceSBTOffset      = hitData->instanceSBTOffset;     // VkAccelerationStructureInstanceKHR::instanceShaderBindingTableRecordOffset
+                float3 translate                    = hitData->translate;
+                
+                float3 tmp = {instance->r0.w, instance->r1.w, instance->r2.w};
+                hitData->translate           = tmp;
+                hitData->instanceIndex       = instance->instanceID;
+                hitData->instanceCustomIndex = instance->customInstanceID;
+                hitData->instanceSBTOffset   = instance->SBTOffset;
+
+                bool result = intersect(botAccelStruct, localOrigin, localDir, Tmin, Tmax, hitData);
+                hasIntersected = hasIntersected || result;
+                if (!result)
                 {
-                    if (localHitData.distance < bestFaceDist)
-                    {
-                        // maintain the closest hit
-                        bestFaceDist = localHitData.distance;
-
-                        hitData->hitPoint       = localHitData.hitPoint;
-                        hitData->distance       = localHitData.distance;
-                        hitData->primitiveIndex = localHitData.primitiveIndex;
-                        hitData->barycentric    = localHitData.barycentric;
-
-
-                        hitData->translate.x         = instance->r0.w;
-                        hitData->translate.y         = instance->r1.w;
-                        hitData->translate.z         = instance->r2.w;
-                        hitData->instanceIndex       = instance->instanceID;
-                        hitData->instanceCustomIndex = instance->customInstanceID;
-                        hitData->instanceSBTOffset   = instance->SBTOffset;
-                    }
+                    hitData->translate = translate;
+                    hitData->instanceIndex = instanceIndex;
+                    hitData->instanceCustomIndex = instanceCustomIndex;
+                    hitData->instanceSBTOffset = instanceSBTOffset;
                 }
             }
         }
@@ -132,28 +120,23 @@ bool intersect(
                 float3 intersectPoint;
                 float distance;
                 float3 bary;
-                if (intersectTriangle(origin, direction, face, vertexList, &intersectPoint, &distance, &bary))
+                if (intersectTriangle(origin, direction, face, vertexList, &intersectPoint, &distance, &bary) &&
+                    distance < hitData->distance)
                 {
-                    if (distance < bestFaceDist)
-                    {
-                        // maintain the closest hit
-                        bestFaceDist = distance;
+                    hitData->distance       = distance;
+                    hitData->hitPoint       = intersectPoint;
+                    hitData->primitiveIndex = face->primID;
+                    hitData->barycentric    = bary;
 
-                        hitData->distance       = distance;
-                        hitData->hitPoint       = intersectPoint;
-                        hitData->primitiveIndex = face->primID;
-                        hitData->barycentric    = bary;
-
-                        // bool cont = true;
-                        // anyHit(&cont);
-                    }
-
+                    hasIntersected = true;
+                    // bool cont = true;
+                    // anyHit(&cont);
                 }
             }
         }
 	}
 
-	return bestFaceDist < FLT_MAX;
+	return hasIntersected;
 }
 
 // https://gist.github.com/DomNomNom/46bb1ce47f68d255fd5d
@@ -226,7 +209,8 @@ void traceRay(
     struct SceneData* sceneData)
 {
     struct HitData hitData;
-    if (intersect(topLevel, origin, direction, Tmin, Tmax, &hitData, 1))
+    hitData.distance = FLT_MAX;
+    if (intersect(topLevel, origin, direction, Tmin, Tmax, &hitData))
     {
         callHit(sbtRecordOffset, payload, &hitData, sceneData);
     }
