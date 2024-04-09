@@ -9,10 +9,12 @@
 namespace RD
 {
 
-typedef cl_mem Handle;
+typedef void* Handle;
 typedef cl_mem TopAccelStruct;
 
 typedef cl_mem Image;
+typedef cl_mem ImageArray;
+typedef cl_sampler Sampler;
 typedef unsigned int Uniform;
 typedef cl_mem Buffer;
 
@@ -20,6 +22,8 @@ enum DescriptorType
 {
     ACCEL_STRUCT_TYPE,
     IMAGE_TYPE,
+    IMAGE_ARRAY_TYPE,
+    IMAGE_SAMPLER,
     BUFFER_TYPE,
     TEX_ARRAY_TYPE
 };
@@ -50,7 +54,7 @@ struct Instance
     BottomAccelStruct bottomAccelStruct;
 };
 
-typedef std::vector<cl_mem> DescriptorSet;
+typedef std::vector<Handle> DescriptorSet;
 typedef std::vector<DescriptorType> PipelineLayout;
 
 typedef cl_kernel ShaderModule;
@@ -87,12 +91,41 @@ TopAccelStruct BuildAccelStruct(Platform* platform, std::vector<Instance>& insta
 void TopAccelStructToFile(Platform* platform, TopAccelStruct accelStruct, char* path);
 void FileToTopAccelStruct(Platform* platform, char* path, TopAccelStruct* accelStruct);
 
-Image  CreateImage(Platform* platform, unsigned int width, unsigned int height);
-Buffer CreateBuffer(Platform* platform, unsigned int size); // TODO:
-Image  CreateImageArray(); // TODO:
+typedef uint32_t AddressingMode;
+// - Out-of-range image coordinates are clamped to the edge of the image.
+#define RD_ADDRESS_CLAMP_TO_EDGE   CL_ADDRESS_CLAMP_TO_EDGE
+// - Out-of-range image coordinates are assigned a border color value.
+#define RD_ADDRESS_CLAMP           CL_ADDRESS_CLAMP
+// - Out-of-range image coordinates read from the image
+//   as if the image data were replicated in all dimensions.
+#define RD_ADDRESS_REPEAT          CL_ADDRESS_REPEAT
+// - Out-of-range image coordinates read from the image
+//   as if the image data were replicated in all dimensions,
+//   mirroring the image contents at the edge of each replication.
+#define RD_ADDRESS_MIRRORED_REPEAT CL_ADDRESS_MIRRORED_REPEAT
 
-void ReadBuffer(Platform* platform,Handle handle, size_t size, void* data, size_t offset = 0);
-void WriteBuffer(Platform* platform, Handle handle, size_t size, void* data, size_t offset = 0);
+typedef uint32_t FilterMode;
+// - Returns the image element nearest to the image coordinate.
+#define RD_FILTER_NEAREST          CL_FILTER_NEAREST
+//  - Returns a weighted average of the four image elements
+//    nearest to the image coordinate.
+#define RD_FILTER_LINEAR           CL_FILTER_LINEAR
+
+
+Buffer CreateBuffer(Platform* platform, unsigned int size);
+Image CreateImage(Platform* platform, unsigned int width, unsigned int height);
+ImageArray CreateImageArray(Platform* platform, unsigned int width, unsigned int height, unsigned int arraySize);
+Sampler CreateSampler(Platform* platform, AddressingMode addressingMode, FilterMode filterMode);
+
+
+void ReadImage(Platform* platform, ImageArray handle,
+    unsigned int width, unsigned int height, size_t arrayIndex, void* data);
+void WriteImage(Platform* platform, ImageArray handle,
+    unsigned int width, unsigned int height, size_t arrayIndex, void* data);
+void ReadBuffer(Platform* platform, Buffer handle,
+    size_t size, void* data, size_t offset = 0);
+void WriteBuffer(Platform* platform, Buffer handle,
+    size_t size, void* data, size_t offset = 0);
 
 DescriptorSet   CreateDescriptorSet(std::vector<Handle> handles); // allocate GPU resources
 PipelineLayout  CreatePipelineLayout(std::vector<DescriptorType> descriptorTypes);

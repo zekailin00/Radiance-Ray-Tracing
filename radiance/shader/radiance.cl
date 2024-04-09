@@ -23,8 +23,10 @@ struct Payload;
 // void hit (struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData);
 // void miss(struct Payload* ray, struct SceneData* sceneData);
 
-void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData);
-void callMiss(int missIndex, struct Payload* payload, struct SceneData* sceneData);
+void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler);
+void callMiss(int missIndex, struct Payload* payload, 
+    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler);
 /* User defined end */
 
 
@@ -34,7 +36,7 @@ bool intersectTriangle(float3 origin, float3 direction,
 bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax);
 
 
-#define BVH_STACK_SIZE 33
+#define BVH_STACK_SIZE 12//33
 
 bool intersect(
     struct AccelStruct* accelStruct, float3 origin, float3 direction,
@@ -206,17 +208,18 @@ void traceRay(
     float3 direction,
     float Tmin, float Tmax,
     struct Payload* payload,
-    struct SceneData* sceneData)
+    struct SceneData* sceneData,
+    image2d_array_t imageArray, sampler_t sampler)
 {
     struct HitData hitData;
     hitData.distance = FLT_MAX;
     if (intersect(topLevel, origin, direction, Tmin, Tmax, &hitData))
     {
-        callHit(sbtRecordOffset, payload, &hitData, sceneData);
+        callHit(sbtRecordOffset, payload, &hitData, sceneData, imageArray, sampler);
     }
     else
     {
-        callMiss(missIndex, payload, sceneData);
+        callMiss(missIndex, payload, sceneData, imageArray, sampler);
     }
 }
 

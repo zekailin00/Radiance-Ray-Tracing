@@ -10,7 +10,7 @@
 
 #include "inspector.h"
 
-// #define OFF_SCREEN
+#define OFF_SCREEN
 
 bool modelLoader(
     std::vector<RD::Vec3>& vertices,
@@ -53,7 +53,7 @@ bool modelLoader(
     {
         vertices[i] = mesh->mVertices[i];
         normals[i]  = mesh->mNormals[i];
-        uvs[i]      = mesh->mTextureCoords[1]?mesh->mTextureCoords[1][i]:aiVector3D();
+        uvs[i]      = mesh->mTextureCoords[0]?mesh->mTextureCoords[0][i]:aiVector3D();
     }
 
     for (size_t i = 0; i < mesh->mNumFaces; i++)
@@ -94,7 +94,12 @@ int main()
     std::string modelFile =
         "/home/zekailin00/Desktop/ray-tracing/framework/assets/monkey-smooth.obj";
     std::string shaderPath =
-        "/home/zekailin00/Desktop/ray-tracing/framework/samples/shader.cl";
+        "/home/zekailin00/Desktop/ray-tracing/framework/samples/shader2.cl";
+    std::string tex0Path =
+        "/home/zekailin00/Desktop/ray-tracing/framework/assets/test0.png";
+    std::string tex1Path =
+        "/home/zekailin00/Desktop/ray-tracing/framework/assets/test1.png";
+    
     unsigned int extent[2] = {1080, 1080};
     size_t imageSize = extent[0] * extent[1] * RD_CHANNEL;
     uint8_t* image = (uint8_t*)malloc(imageSize);
@@ -135,14 +140,49 @@ int main()
     /* Define pipeline data inputs */
     RD::RayTraceProperties RTProp = {
         .totalSamples = 0,
-        .batchSize = 2,
-        .depth = 8,
+        .batchSize = 10,
+        .depth = 1,
         .debug = 0
     };
     RD::Buffer rdRTProp = RD::CreateBuffer(plt, sizeof(RD::RayTraceProperties));
     RD::WriteBuffer(plt, rdRTProp, sizeof(RD::RayTraceProperties), &RTProp);
 
-    RD::Buffer rdImage   = RD::CreateImage(plt, extent[0], extent[1]);
+    RD::Buffer rdImage = RD::CreateImage(plt, extent[0], extent[1]);
+
+    RD::ImageArray rdImageArray = RD::CreateImageArray(plt, 1024, 1024, 2);
+
+    RD::Sampler rdSampler =  RD::CreateSampler(plt,
+        RD_ADDRESS_REPEAT, RD_FILTER_LINEAR);
+
+    {
+        int texWidth, texHeight, texChannel;
+        unsigned char *data = stbi_load(tex0Path.c_str(),
+            &texWidth, &texHeight, &texChannel, 4);
+
+        assert(texWidth == 1024);
+        assert(texHeight == 1024);
+        RD::WriteImage(plt, rdImageArray, texWidth, texHeight, 0, data);
+        stbi_image_free(data);
+    }
+    {
+        int texWidth, texHeight, texChannel=4;
+        unsigned char *data = stbi_load(tex1Path.c_str(),
+            &texWidth, &texHeight, &texChannel, 4);
+
+        assert(texWidth == 1024);
+        assert(texHeight == 1024);
+        RD::WriteImage(plt, rdImageArray, texWidth, texHeight, 1, data);
+        stbi_image_free(data);
+    }
+
+    {
+        unsigned char data[1024 * 1024 * 4];
+        RD::ReadImage(plt, rdImageArray, 1024, 1024, 0, data);
+        stbi_write_jpg("blue.jpg", 1024, 1024, RD_CHANNEL, data, 100);
+        RD::ReadImage(plt, rdImageArray, 1024, 1024, 1, data);
+        stbi_write_jpg("pink.jpg", 1024, 1024, RD_CHANNEL, data, 100);
+    }
+
     RD::Buffer rdExtent  = RD::CreateBuffer(plt, sizeof(extent));
     RD::WriteBuffer(plt, rdExtent, sizeof(extent), extent);
 
@@ -185,11 +225,13 @@ int main()
         rdRTProp,     rdImageScratch, rdImage,      rdExtent,   rdCamData,
         rdVertexData, rdNormalData,   rdUVData,
         rdIndexData,  rdMatData,      rdSceneData,
+        rdImageArray, rdSampler,
         rdTopAS});
     RD::PipelineLayout layout = RD::CreatePipelineLayout({
         RD::BUFFER_TYPE, RD::BUFFER_TYPE, RD::IMAGE_TYPE,  RD::BUFFER_TYPE, RD::BUFFER_TYPE,
         RD::BUFFER_TYPE, RD::BUFFER_TYPE, RD::BUFFER_TYPE,
         RD::BUFFER_TYPE, RD::BUFFER_TYPE, RD::BUFFER_TYPE,
+        RD::IMAGE_ARRAY_TYPE, RD::IMAGE_SAMPLER,
         RD::ACCEL_STRUCT_TYPE});
     RD::Pipeline pipeline     = RD::CreatePipeline({
         1,          // maxRayRecursionDepth

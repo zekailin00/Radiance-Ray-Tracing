@@ -66,6 +66,44 @@ Image CreateImage(Platform* platform, unsigned int width, unsigned int height)
     return handle;
 }
 
+
+ImageArray CreateImageArray(Platform* platform,
+    unsigned int width, unsigned int height, unsigned int arraySize)
+{
+    const cl_image_format imgFmt = {
+        .image_channel_order = CL_RGBA,
+        .image_channel_data_type = CL_UNSIGNED_INT8
+    };
+
+    const cl_image_desc imgDesc = {
+        .image_type = CL_MEM_OBJECT_IMAGE2D_ARRAY,
+        .image_width = width,
+        .image_height = height,
+        .image_depth = 1,
+        .image_array_size = arraySize,
+        .image_row_pitch = 0,
+        .image_slice_pitch = 0,
+        .num_mip_levels = 0,
+        .num_samples = 0
+    };
+
+    cl_int errCode;
+    CLContext* ctx = platform->clContext;
+    cl_mem handle = clCreateImage(ctx->context,
+        CL_MEM_READ_WRITE, &imgFmt, &imgDesc, NULL, &errCode);
+    return handle;
+}
+
+Sampler CreateSampler(Platform* platform,
+    AddressingMode addressingMode, FilterMode filterMode)
+{
+    cl_int errCode;
+    CLContext* ctx = platform->clContext;
+    cl_sampler sampler = clCreateSampler(ctx->context,
+        CL_TRUE, addressingMode, filterMode, &errCode);
+    return sampler;
+}
+
 Buffer CreateBuffer(Platform* platform, unsigned int size)
 {
     CLContext* ctx = platform->clContext;
@@ -120,7 +158,7 @@ Pipeline CreatePipeline(PipelineCreateInfo pipelineCreateInfo)
 }
 
 void ReadBuffer(Platform* platform,
-    Handle handle, size_t size, void* data, size_t offset)
+    Buffer handle, size_t size, void* data, size_t offset)
 {
     CLContext* ctx = platform->clContext;
     CL_CHECK(clEnqueueReadBuffer(ctx->commandQueue, handle,
@@ -128,11 +166,35 @@ void ReadBuffer(Platform* platform,
 }
 
 void WriteBuffer(Platform* platform,
-    Handle handle, size_t size, void* data, size_t offset)
+    Buffer handle, size_t size, void* data, size_t offset)
 {
     CLContext* ctx = platform->clContext;
     CL_CHECK(clEnqueueWriteBuffer(ctx->commandQueue, handle,
         CL_TRUE, offset, size, data, 0, NULL, NULL));
+}
+
+void ReadImage(Platform* platform, ImageArray handle,
+    unsigned int width, unsigned int height, size_t arrayIndex, void* data)
+{
+    size_t origin[3] = {0, 0, arrayIndex};
+    size_t region[3] = {width, height, 1};
+
+    CLContext* ctx = platform->clContext;
+    CL_CHECK(clEnqueueReadImage(ctx->commandQueue, handle,
+        CL_TRUE, origin, region, 0, 0, data,
+        0, 0, NULL));
+}
+
+void WriteImage(Platform* platform, ImageArray handle,
+    unsigned int width, unsigned int height, size_t arrayIndex, void* data)
+{
+    size_t origin[3] = {0, 0, arrayIndex};
+    size_t region[3] = {width, height, 1};
+
+    CLContext* ctx = platform->clContext;
+    CL_CHECK(clEnqueueWriteImage(ctx->commandQueue, handle,
+        CL_TRUE, origin, region, 0, 0, data,
+        0, 0, NULL));
 }
 
 void BindPipeline(Platform* platform, Pipeline pipeline)
