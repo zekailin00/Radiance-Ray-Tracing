@@ -9,5 +9,5 @@ add_subdirectory(external/imgui)
 
 add_subdirectory(radiance)
 add_subdirectory(visualization)
-add_subdirectory(samples)
 add_subdirectory(tools)
+add_subdirectory(samples)
