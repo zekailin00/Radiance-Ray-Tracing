@@ -17,16 +17,19 @@ struct Payload
 struct SceneData
 {
     float*                     camData;
-    float*                     vertexData;
-    float*                     normalData;
-    float*                     uvData;
-    uint*                      indexData;
-    struct Material*           materials;
     struct SceneProperties*    scene;
+    
+    struct MeshInfo*           meshInfoData;
+    float*                     vertexData;
+    uint*                      indexData;
+    float*                     uvData;
+    float*                     normalData;
+    struct Material*           materials;
+    struct AccelStruct*        topLevel;
+
     int                        depth;
     unsigned int               frameID;
     unsigned int               debug;
-    struct AccelStruct*        topLevel;
 };
 
 __kernel void raygen(
@@ -35,12 +38,14 @@ __kernel void raygen(
     __global uchar*                     image /* <row major> */,
     __global unsigned int*              extent /* <x,y> */,
     __global float*                     camData,
-    __global float*                     vertexData,
-    __global float*                     normalData,
-    __global float*                     uvData,
-    __global uint*                      indexData,
-    __global struct Material*           materials,
     __global struct SceneProperties*    scene,
+
+    __global struct MeshInfo*           meshInfoData,
+    __global float*                     vertexData,
+    __global uint*                      indexData,
+    __global float*                     uvData,
+    __global float*                     normalData,
+    __global struct Material*           materials,
     image2d_array_t                     imageArray,
     sampler_t                           sampler,
     __global struct AccelStruct*        topLevel)
@@ -94,20 +99,21 @@ __kernel void raygen(
 
         struct SceneData sceneData;
         sceneData.camData       = camData;
-        sceneData.vertexData    = vertexData;
-        sceneData.normalData    = normalData;
-        sceneData.uvData        = uvData;
-        sceneData.indexData     = indexData;
-        sceneData.materials     = materials;
         sceneData.scene         = scene;
+        sceneData.meshInfoData  = meshInfoData;
+        sceneData.vertexData    = vertexData;
+        sceneData.indexData     = indexData;
+        sceneData.uvData        = uvData;
+        sceneData.normalData    = normalData;
+        sceneData.materials     = materials;
+        sceneData.topLevel      = topLevel;
         sceneData.depth         = 0;
         sceneData.frameID       = frameID;
         sceneData.debug         = RTProp->debug;
-        sceneData.topLevel      = topLevel;
+        
 
         float3 color = 0.0f;
         float3 contribution = 1.0f;
-
         while (sceneData.depth < RTProp->depth)
         {
             traceRay(topLevel, 1, 3, payload.nextRayOrigin, payload.nextRayDirection,
@@ -167,7 +173,6 @@ __kernel void raygen(
     if (!RTProp->debug)
     {
         // HDR mapping
-        // FIXME: when to place this?
         color = color / (color + 1.0f);
 
         // Gamma correct
@@ -213,56 +218,71 @@ void material(struct Payload* payload, struct HitData* hitData,
     uint* indexData = sceneData->indexData;
     float* normalData = sceneData->normalData;
     float* uvData = sceneData->uvData;
+    struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
+    //FIXME: instID is not meshIdx
 
-    uint i0 = indexData[hitData->primitiveIndex * 3 + 0];
-    uint i1 = indexData[hitData->primitiveIndex * 3 + 1];
-    uint i2 = indexData[hitData->primitiveIndex * 3 + 2];
+    int vo =0;// meshInfo->vertexOffset;
+    int io =0;// meshInfo->indexOffset;
+    int uo =0;// meshInfo->uvOffset;
+    int no =0;// meshInfo->normalOffset;
 
-    float3 v0 = {vertexData[i0 * 3 + 0], vertexData[i0 * 3 + 1], vertexData[i0 * 3 + 2]};
-    float3 v1 = {vertexData[i1 * 3 + 0], vertexData[i1 * 3 + 1], vertexData[i1 * 3 + 2]};
-    float3 v2 = {vertexData[i2 * 3 + 0], vertexData[i2 * 3 + 1], vertexData[i2 * 3 + 2]};
+    uint i0 = indexData[io + hitData->primitiveIndex * 3 + 0];
+    uint i1 = indexData[io + hitData->primitiveIndex * 3 + 1];
+    uint i2 = indexData[io + hitData->primitiveIndex * 3 + 2];
 
-    float3 n0 = {normalData[i0 * 3 + 0], normalData[i0 * 3 + 1], normalData[i0 * 3 + 2]};
-    float3 n1 = {normalData[i1 * 3 + 0], normalData[i1 * 3 + 1], normalData[i1 * 3 + 2]};
-    float3 n2 = {normalData[i2 * 3 + 0], normalData[i2 * 3 + 1], normalData[i2 * 3 + 2]};
+    float3 v0 = {vertexData[vo + i0 * 3 + 0], vertexData[vo + i0 * 3 + 1], vertexData[vo + i0 * 3 + 2]};
+    float3 v1 = {vertexData[vo + i1 * 3 + 0], vertexData[vo + i1 * 3 + 1], vertexData[vo + i1 * 3 + 2]};
+    float3 v2 = {vertexData[vo + i2 * 3 + 0], vertexData[vo + i2 * 3 + 1], vertexData[vo + i2 * 3 + 2]};
 
-    float2 uv0 = {uvData[i0 * 3 + 0], uvData[i0 * 3 + 1]};
-    float2 uv1 = {uvData[i1 * 3 + 0], uvData[i1 * 3 + 1]};
-    float2 uv2 = {uvData[i2 * 3 + 0], uvData[i2 * 3 + 1]};
+    float3 n0 = {normalData[no + i0 * 3 + 0], normalData[no + i0 * 3 + 1], normalData[no + i0 * 3 + 2]};
+    float3 n1 = {normalData[no + i1 * 3 + 0], normalData[no + i1 * 3 + 1], normalData[no + i1 * 3 + 2]};
+    float3 n2 = {normalData[no + i2 * 3 + 0], normalData[no + i2 * 3 + 1], normalData[no + i2 * 3 + 2]};
 
-    int matIndex = hitData->instanceIndex % 3;
-    struct Material* material = &sceneData->materials[matIndex];
+    float2 uv0 = {uvData[uo + i0 * 3 + 0], uvData[uo + i0 * 3 + 1]};
+    float2 uv1 = {uvData[uo + i1 * 3 + 0], uvData[uo + i1 * 3 + 1]};
+    float2 uv2 = {uvData[uo + i2 * 3 + 0], uvData[uo + i2 * 3 + 1]};
+    float2 uv  = hitData->barycentric.x * uv0 +
+                 hitData->barycentric.y * uv1 + 
+                 hitData->barycentric.z * uv2;
 
+    struct Material* material = &sceneData->materials[meshInfo->materialIndex];
 
     float metallicFrag;
-    if (material->useMetallicTex == 0)
+    if (material->metallicTexIdx == -1)
         metallicFrag = material->metallic;
-    // else
+    else
+    {
+        float4 coord = {uv.x, 1.0f - uv.y, (float)material->metallicTexIdx, 0.0f};
+        uint4 tex = read_imageui(imageArray, sampler, coord);
+        metallicFrag = clamp(tex.y / 255.0f, 0.0f, 1.0f);
+    }
     //     metallicFrag = texture(MetallicTexture, texCoords).x;
 
     float roughnessFrag;
-    if (material->useRoughnessTex == 0)
+    if (material->roughnessTexIdx == -1)
         roughnessFrag = clamp(material->roughness, 0.0f, 1.0f);
-    // else
+    else
+    {
+        float4 coord = {uv.x, 1.0f - uv.y, (float)material->roughnessTexIdx, 0.0f};
+        uint4 tex = read_imageui(imageArray, sampler, coord);
+        roughnessFrag = clamp(tex.z / 255.0f, 0.0f, 1.0f);
+    }
     //     roughnessFrag = clamp(texture(RoughnessTexture, texCoords).x, 0.0, 1.0);
 
     float3 albedoFrag;
-    if (material->useAlbedoTex == 0)
+    if (material->albedoTexIdx == -1)
         albedoFrag = material->albedo.rgb;
-    // else
-    //     albedoFrag = texture(AlbedoTexture, texCoords).rgb;
-
-    {   // sample texture [test code]
-        float2 uv = hitData->barycentric.x * uv0 +
-                    hitData->barycentric.y * uv1 + 
-                    hitData->barycentric.z * uv2;
-
-        float4 coord = {uv.x, 1.0f - uv.y, 0.0f, 0.0f};
-        uint4 texCol = read_imageui(imageArray, sampler, coord);
-        albedoFrag.x = texCol.x / 255.0f;
-        albedoFrag.y = texCol.y / 255.0f;
-        albedoFrag.z = texCol.z / 255.0f;
+    else
+    {
+        float4 coord = {uv.x, 1.0f - uv.y, (float)material->albedoTexIdx, 0.0f};
+        uint4 tex = read_imageui(imageArray, sampler, coord);
+        albedoFrag.x = clamp(tex.x / 255.0f, 0.0f, 1.0f);
+        albedoFrag.y = clamp(tex.y / 255.0f, 0.0f, 1.0f);
+        albedoFrag.z = clamp(tex.z / 255.0f, 0.0f, 1.0f);
     }
+
+    // albedoFrag = texture(AlbedoTexture, texCoords).rgb;
+    //TODO: sample normal texture
 
     struct SceneProperties* scene = sceneData->scene;
 

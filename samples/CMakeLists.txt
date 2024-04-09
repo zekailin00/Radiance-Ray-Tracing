@@ -7,6 +7,7 @@ add_executable(sample1
 target_link_libraries(sample1 PUBLIC
     radiance
     inspector
+    sceneLoader
 )
 
 add_executable(sample2

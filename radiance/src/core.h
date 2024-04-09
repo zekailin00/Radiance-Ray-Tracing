@@ -117,10 +117,23 @@ struct Material
     float _1;
     float _2;
 
-    float useAlbedoTex;
-    float useMetallicTex;
-    float useRoughnessTex;
-    float useNormalTex;
+    // -1 := not used
+    int albedoTexIdx;
+    int metallicTexIdx;
+    int roughnessTexIdx;
+    int normalTexIdx;
+};
+
+struct MeshInfo
+{
+    // -1 := not used
+    int vertexOffset;
+    int indexOffset;
+    int uvOffset;   
+    int normalOffset;
+
+    int materialIndex;
+    int _0, _1, _2;
 };
 
 struct DirLight
