@@ -555,7 +555,7 @@ void CreateDeviceBVH(BVHNode* root, const std::vector<Instance>& instList,
     {
         if (instOffsetMap.find(i.bottomAccelStruct) == instOffsetMap.end())
         {
-            printf("Building TopAS: Writing to instance offset at: %u", nextOffset);
+            printf("Building TopAS: Writing to instance offset at: %u\n", nextOffset);
             instOffsetMap[i.bottomAccelStruct] = nextOffset + topASSize;
             nextOffset = nextOffset + i.bottomAccelStruct->data.size();
         }
