@@ -41,6 +41,8 @@ __kernel void raygen(
     __global uint*                      indexData,
     __global struct Material*           materials,
     __global struct SceneProperties*    scene,
+    image2d_array_t                     imageArray,
+    sampler_t                           sampler,
     __global struct AccelStruct*        topLevel)
 {
     /* the unique global id of the work item for the current pixel */
@@ -109,7 +111,7 @@ __kernel void raygen(
         while (sceneData.depth < RTProp->depth)
         {
             traceRay(topLevel, 1, 3, payload.nextRayOrigin, payload.nextRayDirection,
-                0.01, 1000, &payload, &sceneData);
+                0.01, 1000, &payload, &sceneData, imageArray, sampler);
 
             if (payload.hit)
             {
@@ -194,20 +196,24 @@ __kernel void raygen(
 //             , idx0, idx1, idx2);
 // }
 
-void shadow(struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData)
+void shadow(struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
 {
     // Shadow test
     payload->hit = true;
     payload->color = 0.0f;
 }
 
-void material(struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData)
+void material(struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
 {
     payload->hit = true;
 
     float* vertexData = sceneData->vertexData;
     uint* indexData = sceneData->indexData;
     float* normalData = sceneData->normalData;
+    float* uvData = sceneData->uvData;
+
     uint i0 = indexData[hitData->primitiveIndex * 3 + 0];
     uint i1 = indexData[hitData->primitiveIndex * 3 + 1];
     uint i2 = indexData[hitData->primitiveIndex * 3 + 2];
@@ -220,6 +226,9 @@ void material(struct Payload* payload, struct HitData* hitData, struct SceneData
     float3 n1 = {normalData[i1 * 3 + 0], normalData[i1 * 3 + 1], normalData[i1 * 3 + 2]};
     float3 n2 = {normalData[i2 * 3 + 0], normalData[i2 * 3 + 1], normalData[i2 * 3 + 2]};
 
+    float2 uv0 = {uvData[i0 * 3 + 0], uvData[i0 * 3 + 1]};
+    float2 uv1 = {uvData[i1 * 3 + 0], uvData[i1 * 3 + 1]};
+    float2 uv2 = {uvData[i2 * 3 + 0], uvData[i2 * 3 + 1]};
 
     int matIndex = hitData->instanceIndex % 3;
     struct Material* material = &sceneData->materials[matIndex];
@@ -243,6 +252,17 @@ void material(struct Payload* payload, struct HitData* hitData, struct SceneData
     // else
     //     albedoFrag = texture(AlbedoTexture, texCoords).rgb;
 
+    {   // sample texture [test code]
+        float2 uv = hitData->barycentric.x * uv0 +
+                    hitData->barycentric.y * uv1 + 
+                    hitData->barycentric.z * uv2;
+
+        float4 coord = {uv.x, 1.0f - uv.y, 0.0f, 0.0f};
+        uint4 texCol = read_imageui(imageArray, sampler, coord);
+        albedoFrag.x = texCol.x / 255.0f;
+        albedoFrag.y = texCol.y / 255.0f;
+        albedoFrag.z = texCol.z / 255.0f;
+    }
 
     struct SceneProperties* scene = sceneData->scene;
 
@@ -261,7 +281,8 @@ void material(struct Payload* payload, struct HitData* hitData, struct SceneData
 
     // Shadow test 
     struct Payload shadowPayload;
-    traceRay(sceneData->topLevel, 2, 4, origin, L, 0.01, 1000, &shadowPayload, sceneData);
+    traceRay(sceneData->topLevel, 2, 4, origin, L, 0.01, 1000, &shadowPayload,
+        sceneData, imageArray, sampler);
 
     float3 color = {0.0f, 0.0f, 0.0f};
     if (!shadowPayload.hit)
@@ -309,11 +330,6 @@ void material(struct Payload* payload, struct HitData* hitData, struct SceneData
     //      Global illumination End       //
     ////////////////////////////////////////
 
-
-    // // [debug] barycentric viz
-    // payload->color[0] = hitData->barycentric.x * 255;
-    // payload->color[1] = hitData->barycentric.y * 255;
-    // payload->color[2] = hitData->barycentric.z * 255;
     if (sceneData->debug == 1)
     {
         // [debug] normal viz
@@ -344,13 +360,15 @@ void material(struct Payload* payload, struct HitData* hitData, struct SceneData
     {
         // Shadow test: white color if no occlusion
         struct Payload shadowPayload;
-        traceRay(sceneData->topLevel, 2, 4, origin, L, 0.01, 1000, &shadowPayload, sceneData);
+        traceRay(sceneData->topLevel, 2, 4, origin, L, 0.01, 1000, &shadowPayload,
+            sceneData, imageArray, sampler);
         payload->color = shadowPayload.color;
     }
     else if (sceneData->debug == 7)
     {
-        float3 a = BRDF(L, V, N, metallicFrag, roughnessFrag, albedoFrag);
-        payload->color = (a) / ((a) + 1.0f);
+        payload->color.x = hitData->barycentric.x;
+        payload->color.y = hitData->barycentric.y;
+        payload->color.z = hitData->barycentric.z;
     }
 
     // // [debug] custom inst index viz
@@ -359,13 +377,15 @@ void material(struct Payload* payload, struct HitData* hitData, struct SceneData
     // payload->color[2] = (uchar)hitData->instanceCustomIndex;
 }
 
-void shadowMiss(struct Payload* payload, struct SceneData* sceneData)
+void shadowMiss(struct Payload* payload,
+    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
 {
     payload->hit = false;
     payload->color = 1.0f;
 }
 
-void environment(struct Payload* payload, struct SceneData* sceneData)
+void environment(struct Payload* payload,
+    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
 {
     payload->hit = false;
     payload->color.x = 0.2;
@@ -374,25 +394,27 @@ void environment(struct Payload* payload, struct SceneData* sceneData)
 }
 
 
-void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData)
+void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
 {
     int index = hitData->instanceSBTOffset + sbtRecordOffset;
     switch (index)
     {
-		case 1:material(payload, hitData, sceneData);break;
-		case 2:shadow(payload, hitData, sceneData);break;
+		case 1:material(payload, hitData, sceneData, imageArray, sampler);break;
+		case 2:shadow(payload, hitData, sceneData, imageArray, sampler);break;
 
         default: printf("Error: No hit shader found.");
     }
 }
 
 
-void callMiss(int missIndex, struct Payload* payload, struct SceneData* sceneData)
+void callMiss(int missIndex, struct Payload* payload,
+    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
 {
     switch (missIndex)
     {
-		case 3:environment(payload, sceneData);break;
-		case 4:shadowMiss(payload, sceneData);break;
+		case 3:environment(payload, sceneData, imageArray, sampler);break;
+		case 4:shadowMiss(payload, sceneData, imageArray, sampler);break;
 
         default: printf("Error: No miss shader found.");
     }
