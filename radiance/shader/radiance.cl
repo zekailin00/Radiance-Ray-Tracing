@@ -20,8 +20,6 @@ struct HitData
 
 /* User defined begin */
 struct Payload;
-// void hit (struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData);
-// void miss(struct Payload* ray, struct SceneData* sceneData);
 
 void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitData,
     struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler);
@@ -36,14 +34,15 @@ bool intersectTriangle(float3 origin, float3 direction,
 bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax);
 
 
-#define BVH_STACK_SIZE 30
+#define BVH_TOP_STACK_SIZE 8
+#define BVH_BOT_STACK_SIZE 128
 
-bool intersect(
+bool intersectBot(
     struct AccelStruct* accelStruct, float3 origin, float3 direction,
     float Tmin, float Tmax, struct HitData* hitData)
 {
     bool hasIntersected = false;
-	unsigned int stack[BVH_STACK_SIZE];     // Stack pointing to BVH node index
+	unsigned int stack[BVH_BOT_STACK_SIZE];     // Stack pointing to BVH node index
 	int stackIdx = 0;                       // Always point to the first empty element
 	stack[stackIdx++] = 0;
 
@@ -66,9 +65,76 @@ bool intersect(
 				stack[stackIdx++] = node->node.inner._idxLeft;  // left child node index
 				
 				// return if stack size is exceeded
-				if (stackIdx > BVH_STACK_SIZE)
+				if (stackIdx > BVH_BOT_STACK_SIZE)
                 {
-                    printf("ERROR: stack overflow\n");
+                    printf("ERROR: Bottom AS stack overflow\n");
+                    return false; 
+                }
+			}
+		}
+        else if (node->node.leaf._type == TYPE_TRIG)
+        {
+            Vertex* vertexList = TO_VERTEX(accelStruct);
+            struct Triangle* faceList = TO_FACE(accelStruct);
+
+            // loop over every triangle in the leaf node
+            for (unsigned int i = 0; i < GET_COUNT(node); i++)
+            {
+                struct Triangle* face = &faceList[node->node.leaf._startIndexList + i];
+
+                float3 intersectPoint;
+                float distance;
+                float3 bary;
+                if (intersectTriangle(origin, direction, face, vertexList, &intersectPoint, &distance, &bary) &&
+                    distance < hitData->distance)
+                {
+                    hitData->distance       = distance;
+                    hitData->hitPoint       = intersectPoint;
+                    hitData->primitiveIndex = face->primID;
+                    hitData->barycentric    = bary;
+
+                    hasIntersected = true;
+                    // bool cont = true;
+                    // anyHit(&cont);
+                }
+            }
+        }
+	}
+
+	return hasIntersected;
+}
+
+bool intersectTop(
+    struct AccelStruct* accelStruct, float3 origin, float3 direction,
+    float Tmin, float Tmax, struct HitData* hitData)
+{
+    bool hasIntersected = false;
+	unsigned int stack[BVH_TOP_STACK_SIZE];     // Stack pointing to BVH node index
+	int stackIdx = 0;                       // Always point to the first empty element
+	stack[stackIdx++] = 0;
+
+	// while the stack is not empty
+	while (stackIdx)
+    {
+		// pop a BVH node from the stack
+		unsigned int nodeIdx = stack[stackIdx - 1];
+		stackIdx--;
+
+        struct BVHNode* nodeList = TO_BVH_NODE(accelStruct);
+		struct BVHNode* node = nodeList + nodeIdx;
+
+		if (!IS_LEAF(node)) // INNER NODE
+        {
+			// if ray intersects inner node, push indices of left and right child nodes on the stack
+			if (intersectAABB(origin, direction, node->_bottom.xyz, node->_top.xyz))
+            {
+				stack[stackIdx++] = node->node.inner._idxRight; // right child node index
+				stack[stackIdx++] = node->node.inner._idxLeft;  // left child node index
+				
+				// return if stack size is exceeded
+				if (stackIdx > BVH_TOP_STACK_SIZE)
+                {
+                    printf("ERROR: Top AS stack overflow\n");
                     return false; 
                 }
 			}
@@ -98,7 +164,7 @@ bool intersect(
                 hitData->instanceCustomIndex = instance->customInstanceID;
                 hitData->instanceSBTOffset   = instance->SBTOffset;
 
-                bool result = intersect(botAccelStruct, localOrigin, localDir, Tmin, Tmax, hitData);
+                bool result = intersectBot(botAccelStruct, localOrigin, localDir, Tmin, Tmax, hitData);
                 hasIntersected = hasIntersected || result;
                 if (!result)
                 {
@@ -106,33 +172,6 @@ bool intersect(
                     hitData->instanceIndex = instanceIndex;
                     hitData->instanceCustomIndex = instanceCustomIndex;
                     hitData->instanceSBTOffset = instanceSBTOffset;
-                }
-            }
-        }
-        else if (node->node.leaf._type == TYPE_TRIG)
-        {
-            Vertex* vertexList = TO_VERTEX(accelStruct);
-            struct Triangle* faceList = TO_FACE(accelStruct);
-
-            // loop over every triangle in the leaf node
-            for (unsigned int i = 0; i < GET_COUNT(node); i++)
-            {
-                struct Triangle* face = &faceList[node->node.leaf._startIndexList + i];
-
-                float3 intersectPoint;
-                float distance;
-                float3 bary;
-                if (intersectTriangle(origin, direction, face, vertexList, &intersectPoint, &distance, &bary) &&
-                    distance < hitData->distance)
-                {
-                    hitData->distance       = distance;
-                    hitData->hitPoint       = intersectPoint;
-                    hitData->primitiveIndex = face->primID;
-                    hitData->barycentric    = bary;
-
-                    hasIntersected = true;
-                    // bool cont = true;
-                    // anyHit(&cont);
                 }
             }
         }
@@ -213,7 +252,7 @@ void traceRay(
 {
     struct HitData hitData;
     hitData.distance = FLT_MAX;
-    if (intersect(topLevel, origin, direction, Tmin, Tmax, &hitData))
+    if (intersectTop(topLevel, origin, direction, Tmin, Tmax, &hitData))
     {
         callHit(sbtRecordOffset, payload, &hitData, sceneData, imageArray, sampler);
     }
