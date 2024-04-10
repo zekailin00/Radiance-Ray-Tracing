@@ -14,6 +14,10 @@
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb_image_resize2.h"
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
+
 #define TEX_DIM 2048 // Fixed dimension of textures in texture array for materials.
 #define BVH_CACHE_PATH "./bvh-cache.bin"
 // TODO: caching
@@ -44,16 +48,36 @@ Scene* Scene::Load(std::string path, RD::Platform* plt)
     std::vector<RD::Vec3>       normalList;
     std::vector<RD::Material>   matList;
 
+    for (int i = 0; i < scene->mNumTextures; i++)
+    {
+        const aiTexture* tex = scene->mTextures[i];
+        assert(tex->mHeight == 0); // Compressed image
+
+        int x, y, ch;
+        unsigned char* data = stbi_load_from_memory(
+            (const unsigned char*)tex->pcData,
+            tex->mWidth, &x, &y, &ch, RD_CHANNEL
+        );
+
+        unsigned char* texture = stbir_resize_uint8_linear(
+            data, x, y, 0, NULL, TEX_DIM, TEX_DIM, 0, STBIR_RGBA
+        );
+
+        RD::WriteImage(plt, rdTextureData, TEX_DIM, TEX_DIM, i, texture);
+        free(data);
+        stbi_image_free(texture);
+    }
+
     for (int i = 0; i < scene->mNumMeshes; i++)
     {
         const aiMesh* mesh = scene->mMeshes[i];
         RD::Mesh rdMesh;
 
-        RD::MeshInfo meshInfo = {
-            .vertexOffset  = (int)(vertexList.size() * sizeof(RD::Vec3)),
-            .indexOffset   = (int)(indexList.size()  * sizeof(RD::Triangle)),
-            .uvOffset      = (int)(uvList.size()     * sizeof(RD::Vec3)),
-            .normalOffset  = (int)(normalList.size() * sizeof(RD::Vec3)),
+        RD::MeshInfo meshInfo = { //FIXME: element offset
+            .vertexOffset  = (int)(vertexList.size() * 3),// sizeof(RD::Vec3)),
+            .indexOffset   = (int)(indexList.size()  * 3),// sizeof(RD::Triangle)),
+            .uvOffset      = (int)(uvList.size()     * 3),// sizeof(RD::Vec3)),
+            .normalOffset  = (int)(normalList.size() * 3),// sizeof(RD::Vec3)),
             .materialIndex = (int)(mesh->mMaterialIndex)
         };
 
@@ -170,27 +194,6 @@ Scene* Scene::Load(std::string path, RD::Platform* plt)
         matList.push_back(material);
     }
     
-    for (int i = 0; i < scene->mNumTextures; i++)
-    {
-        const aiTexture* tex = scene->mTextures[i];
-        assert(tex->mHeight == 0); // Compressed image
-
-        int x, y, ch;
-        unsigned char* data = stbi_load_from_memory(
-            (const unsigned char*)tex->pcData,
-            tex->mWidth, &x, &y, &ch, RD_CHANNEL
-        );
-
-        unsigned char* texture = new unsigned char[TEX_DIM * TEX_DIM * RD_CHANNEL];
-        stbir_resize_uint8_linear(
-            data, x, y, x, texture, TEX_DIM, TEX_DIM, TEX_DIM, STBIR_RGBA
-        ); // FIXME: check if resize is correct
-
-        RD::WriteImage(plt, rdTextureData, TEX_DIM, TEX_DIM, i, texture);
-        free(data);
-        stbi_image_free(texture);
-    }
-
     unsigned int meshInfoSize = meshInfoList.size() * sizeof(RD::MeshInfo);
     RD::Buffer rdMeshInfoData = RD::CreateBuffer(plt, meshInfoSize);
     RD::WriteBuffer(plt, rdMeshInfoData, meshInfoSize, meshInfoList.data());

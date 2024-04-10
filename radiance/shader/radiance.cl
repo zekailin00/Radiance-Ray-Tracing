@@ -36,7 +36,7 @@ bool intersectTriangle(float3 origin, float3 direction,
 bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax);
 
 
-#define BVH_STACK_SIZE 12//33
+#define BVH_STACK_SIZE 30
 
 bool intersect(
     struct AccelStruct* accelStruct, float3 origin, float3 direction,
