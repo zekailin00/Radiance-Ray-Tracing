@@ -371,9 +371,43 @@ BVHNode *CreateBVH(const std::vector<Instance>& instances)
         BBoxTmp b;
         b._top = root->_top;
         b._bottom = root->_bottom;
-        b._center = (b._top + b._bottom) * 0.5f;
         b._ptr = &inst;
 
+        Mat4x4 vi0 {
+            b._top.x,    b._bottom.x, b._top.x,    b._bottom.x,   
+            b._top.y,    b._top.y,    b._bottom.y, b._bottom.y,
+            b._top.z,    b._top.z,    b._top.z,    b._top.z,
+            1,           1,           1,           1     
+        };
+        Mat4x4 vi1 {
+            b._top.x,    b._bottom.x, b._top.x,    b._bottom.x,   
+            b._top.y,    b._top.y,    b._bottom.y, b._bottom.y,
+            b._bottom.z, b._bottom.z, b._bottom.z, b._bottom.z,
+            1,           1,           1,           1     
+        };
+        Mat4x4 vf0 = inst.transform * vi0;
+        Mat4x4 vf1 = inst.transform * vi1;
+
+        // loop over triangle vertices and pick smallest vertex for bottom of triangle bbox
+        aiVector3f tmp0, tmp1, tmp2, tmp3, tmp4, tmp5;
+		minVec3(tmp0, {vi0.a2, vi0.b2, vi0.c2}, {vi0.a1, vi0.b1, vi0.c1});
+		minVec3(tmp1, {vi0.a4, vi0.b4, vi0.c4}, {vi0.a3, vi0.b3, vi0.c3});
+        minVec3(tmp2, {vi1.a2, vi1.b2, vi1.c2}, {vi1.a1, vi1.b1, vi1.c1});
+		minVec3(tmp3, {vi1.a4, vi1.b4, vi1.c4}, {vi1.a3, vi1.b3, vi1.c3});
+        minVec3(tmp4, tmp1, tmp0);
+		minVec3(tmp5, tmp3, tmp2);
+        minVec3(b._bottom, tmp4, tmp5);
+		
+        maxVec3(tmp0, {vi0.a2, vi0.b2, vi0.c2}, {vi0.a1, vi0.b1, vi0.c1});
+		maxVec3(tmp1, {vi0.a4, vi0.b4, vi0.c4}, {vi0.a3, vi0.b3, vi0.c3});
+        maxVec3(tmp2, {vi1.a2, vi1.b2, vi1.c2}, {vi1.a1, vi1.b1, vi1.c1});
+		maxVec3(tmp3, {vi1.a4, vi1.b4, vi1.c4}, {vi1.a3, vi1.b3, vi1.c3});
+        maxVec3(tmp4, tmp1, tmp0);
+		maxVec3(tmp5, tmp3, tmp2);
+        maxVec3(b._top, tmp4, tmp5);
+
+        b._center = (b._top + b._bottom) * 0.5f;
+    
         minVec3(bottom, bottom, b._bottom);
         maxVec3(top, top, b._top);
         

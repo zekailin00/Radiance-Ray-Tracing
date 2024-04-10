@@ -9,13 +9,12 @@ struct HitData
 {
     float3 hitPoint;
     float distance;
-    // gl_ObjectToWorldEXT 4x3 matrix
     unsigned int primitiveIndex;        // Bottom-level triangle index (gl_PrimitiveID)
     unsigned int instanceIndex;         // Top-level instance index (gl_InstanceID)
     unsigned int instanceCustomIndex;   // Top-level instance custom index (gl_InstanceCustomIndexEXT)
     unsigned int instanceSBTOffset;     // VkAccelerationStructureInstanceKHR::instanceShaderBindingTableRecordOffset
     float3 barycentric;
-    float3 translate;
+    mat4x4 transform;                   // gl_ObjectToWorldEXT 4x3 matrix
 };
 
 /* User defined begin */
@@ -35,7 +34,7 @@ bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax
 
 
 #define BVH_TOP_STACK_SIZE 8
-#define BVH_BOT_STACK_SIZE 128
+#define BVH_BOT_STACK_SIZE 100
 
 bool intersectBot(
     struct AccelStruct* accelStruct, float3 origin, float3 direction,
@@ -148,27 +147,30 @@ bool intersectTop(
                 struct Instance* instance = &instanceList[node->node.leaf._startIndexList + i];
                 struct AccelStruct* botAccelStruct = TO_BOT_AS(accelStruct, instance);
 
-                // TODO: transform ray
-                float3 position = {instance->r0.w, instance->r1.w, instance->r2.w};
-                float3 localOrigin = origin - position;
-                float3 localDir = direction;
-
+                mat4x4 transform                    = hitData->transform;
                 unsigned int instanceIndex          = hitData->instanceIndex;         // Top-level instance index (gl_InstanceID)
                 unsigned int instanceCustomIndex    = hitData->instanceCustomIndex;   // Top-level instance custom index (gl_InstanceCustomIndexEXT)
                 unsigned int instanceSBTOffset      = hitData->instanceSBTOffset;     // VkAccelerationStructureInstanceKHR::instanceShaderBindingTableRecordOffset
-                float3 translate                    = hitData->translate;
-                
-                float3 tmp = {instance->r0.w, instance->r1.w, instance->r2.w};
-                hitData->translate           = tmp;
+
+                float4 rayPos = {origin.x, origin.y, origin.z, 1.0f};
+                float4 rayDir = {direction.x, direction.y, direction.z, 0.0f};
+                float4 localOrigin, localDir;
+                mat4x4 inverse;
+
+                Vec4ToMat4x4(&instance->r0, &instance->r1, &instance->r2, &instance->r3, &hitData->transform);
+                InverseMat4x4(&hitData->transform, &inverse);
+                MultiplyMat4Vec4(&inverse, &rayPos, &localOrigin);
+                MultiplyMat4Vec4(&inverse, &rayDir, &localDir);
+
                 hitData->instanceIndex       = instance->instanceID;
                 hitData->instanceCustomIndex = instance->customInstanceID;
                 hitData->instanceSBTOffset   = instance->SBTOffset;
 
-                bool result = intersectBot(botAccelStruct, localOrigin, localDir, Tmin, Tmax, hitData);
+                bool result = intersectBot(botAccelStruct, localOrigin.xyz, localDir.xyz, Tmin, Tmax, hitData);
                 hasIntersected = hasIntersected || result;
                 if (!result)
                 {
-                    hitData->translate = translate;
+                    hitData->transform = transform;
                     hitData->instanceIndex = instanceIndex;
                     hitData->instanceCustomIndex = instanceCustomIndex;
                     hitData->instanceSBTOffset = instanceSBTOffset;

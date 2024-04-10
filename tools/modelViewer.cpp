@@ -9,11 +9,15 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-#define modelFile "/home/zekailin00/Desktop/ray-tracing/framework/assets/helmet.gltf"
-// #define modelFile "/home/zekailin00/Desktop/ray-tracing/framework/assets/material-test.gltf"
+// #define modelFile "/home/zekailin00/Desktop/ray-tracing/framework/assets/helmet.gltf"
+// #define modelFile "/home/zekailin00/Desktop/ray-tracing/framework/assets/c2.glb"
+// #define modelFile "/home/zekailin00/Desktop/ray-tracing/framework/assets/scene-loader-test2.glb"
 // #define modelFile "/home/zekailin00/Desktop/ray-tracing/framework/assets/sample1.gltf"
+// #define modelFile "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell2.glb"
+#define modelFile "/home/zekailin00/Desktop/ray-tracing/framework/assets/sample1.glb"
 
-void PrintChildren(aiNode* node, int level);
+
+void PrintChildren(aiNode* node, int level, const aiMatrix4x4& parent);
 
 int main(int, char**)
 {
@@ -140,7 +144,7 @@ int main(int, char**)
     }
 
     printf("\n\nNode Tree:\n");
-    PrintChildren(scene->mRootNode, 0);
+    PrintChildren(scene->mRootNode, 0, aiMatrix4x4{});
 }
 
 inline void Indent(int level)
@@ -148,7 +152,7 @@ inline void Indent(int level)
     while(level-- > 0) printf("\t");
 }
 
-void PrintChildren(aiNode* node, int level)
+void PrintChildren(aiNode* node, int level, const aiMatrix4x4& parent)
 {
     if (node == nullptr) return;
     Indent(level); printf("Name: %s\n", node->mName.C_Str());
@@ -157,10 +161,15 @@ void PrintChildren(aiNode* node, int level)
     for (int i = 0; i < node->mNumMeshes; i++)
         printf("%d, ", node->mMeshes[i]);
     printf("\n");
+    aiMatrix4x4 transform = parent * node->mTransformation;
+    Indent(level); printf("<%f, %f, %f, %f>\n", transform.a1, transform.a2, transform.a3, transform.a4);
+    Indent(level); printf("<%f, %f, %f, %f>\n", transform.b1, transform.b2, transform.b3, transform.b4);
+    Indent(level); printf("<%f, %f, %f, %f>\n", transform.c1, transform.c2, transform.c3, transform.c4);
+    Indent(level); printf("<%f, %f, %f, %f>\n", transform.d1, transform.d2, transform.d3, transform.d4);
     Indent(level); printf("mNumChildren: %d\n", node->mNumChildren);
     for (int i = 0; i < node->mNumChildren; i++)
     {
-        PrintChildren(node->mChildren[i], level + 1); 
+        PrintChildren(node->mChildren[i], level + 1, transform); 
         printf("\n");
     }
 }

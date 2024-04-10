@@ -254,3 +254,11 @@ void TransformToTranslate(mat4x4* a, vec3* out)
     out->y = a->s7;
     out->z = a->sb;
 }
+
+void Vec4ToMat4x4(vec4* r0, vec4* r1, vec4* r2, vec4* r3, mat4x4* out)
+{
+    out->s0123 = *r0;
+    out->s4567 = *r1;
+    out->s89ab = *r2;
+    out->scdef = *r3;
+}

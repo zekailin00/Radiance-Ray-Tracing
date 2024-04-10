@@ -293,39 +293,47 @@ void material(struct Payload* payload, struct HitData* hitData,
     float3 N;
     if (true)//(material->normalTexIdx == -1)/FIXME: transform normal
     {
-        float3 n0 = {normalData[no + i0 * 3 + 0], normalData[no + i0 * 3 + 1], normalData[no + i0 * 3 + 2]};
-        float3 n1 = {normalData[no + i1 * 3 + 0], normalData[no + i1 * 3 + 1], normalData[no + i1 * 3 + 2]};
-        float3 n2 = {normalData[no + i2 * 3 + 0], normalData[no + i2 * 3 + 1], normalData[no + i2 * 3 + 2]};
-        float3 normal = hitData->barycentric.x * n0 +
+        float4 n0 = {normalData[no + i0 * 3 + 0], normalData[no + i0 * 3 + 1], normalData[no + i0 * 3 + 2], 0.0f};
+        float4 n1 = {normalData[no + i1 * 3 + 0], normalData[no + i1 * 3 + 1], normalData[no + i1 * 3 + 2], 0.0f};
+        float4 n2 = {normalData[no + i2 * 3 + 0], normalData[no + i2 * 3 + 1], normalData[no + i2 * 3 + 2], 0.0f};
+        float4 normal = hitData->barycentric.x * n0 +
                         hitData->barycentric.y * n1 + 
                         hitData->barycentric.z * n2;
-        N = normalize(normal);
+        float4 tmp;
+        MultiplyMat4Vec4(&hitData->transform, &normal, &tmp);
+        N = normalize(tmp.xyz);
     }
     else
     {
         float4 coord = {uv.x, 1.0f - uv.y, (float)material->normalTexIdx, 0.0f};
         uint4 tex = read_imageui(imageArray, sampler, coord);
-        float3 normal = {
+        float4 normal = {
             clamp(tex.x / 255.0f, 0.0f, 1.0f),
             clamp(tex.y / 255.0f, 0.0f, 1.0f),
-            clamp(tex.z / 255.0f, 0.0f, 1.0f)
+            clamp(tex.z / 255.0f, 0.0f, 1.0f),
+            0.0f
         };
-        N = normalize(normal);
+        N = normalize(normal.xyz);
     }
 
     struct SceneProperties* scene = sceneData->scene;
 
-    float3 origin = hitData->hitPoint + hitData->translate + N * 0.0001f;
+    float3 hitPos; { // Get global hit position
+        float4 tmp0, tmp1 = {hitData->hitPoint.x, hitData->hitPoint.y, hitData->hitPoint.z, 1.0f};
+        MultiplyMat4Vec4(&hitData->transform, &tmp1, &tmp0);
+        hitPos = tmp0.xyz + N * 0.0001f;
+    }
     float3 viewPos = {
         sceneData->camData->x,
         sceneData->camData->y,
-        sceneData->camData->z};
-    float3 V = normalize(viewPos - origin);
+        sceneData->camData->z
+    };
+    float3 V = normalize(viewPos - hitPos);
     float3 L = normalize(-scene->lights[0].direction.xyz);
 
     // Shadow test 
     struct Payload shadowPayload;
-    traceRay(sceneData->topLevel, 2, 4, origin, L, 0.01, 1000, &shadowPayload,
+    traceRay(sceneData->topLevel, 2, 4, hitPos, L, 0.01, 1000, &shadowPayload,
         sceneData, imageArray, sampler);
 
     float3 color = {0.0f, 0.0f, 0.0f};
@@ -366,7 +374,7 @@ void material(struct Payload* payload, struct HitData* hitData,
         random, &nextFactor);
 
     // indirect ray
-    payload->nextRayOrigin = origin;
+    payload->nextRayOrigin = hitPos;
     payload->nextRayDirection = nextDir;
     payload->nextFactor = nextFactor;
 
@@ -404,7 +412,7 @@ void material(struct Payload* payload, struct HitData* hitData,
     {
         // Shadow test: white color if no occlusion
         struct Payload shadowPayload;
-        traceRay(sceneData->topLevel, 2, 4, origin, L, 0.01, 1000, &shadowPayload,
+        traceRay(sceneData->topLevel, 2, 4, hitPos, L, 0.01, 1000, &shadowPayload,
             sceneData, imageArray, sampler);
         payload->color = shadowPayload.color;
     }

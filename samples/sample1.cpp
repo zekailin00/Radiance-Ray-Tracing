@@ -7,7 +7,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#define OFF_SCREEN
+// #define OFF_SCREEN
+#define LOAD_CACHE true
 
 struct CbData
 {
@@ -34,9 +35,10 @@ bool RenderSceneConfigUI(CbData *d);
 int main()
 {
     std::string modelFile =
-        "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell2.glb";
+        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell2.glb";
+        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/sample2.glb";
         // "/home/zekailin00/Desktop/ray-tracing/framework/assets/scene-loader-test2.glb";
-        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/c2.glb";
+        "/home/zekailin00/Desktop/ray-tracing/framework/assets/c2.glb"; //armor
     std::string shaderPath =
         "/home/zekailin00/Desktop/ray-tracing/framework/samples/shader.cl";
     unsigned int extent[2] = {1080, 1080};
@@ -46,18 +48,18 @@ int main()
     /* Define pipeline data inputs */
     RD::RayTraceProperties RTProp = {
         .totalSamples = 0,
-        .batchSize = 20,
-        .depth = 3,
+        .batchSize = 1,
+        .depth = 8,
         .debug = 0
     };
 
     struct Camera camData = {
         .x =  0.0f,
-        .y = 6.0f, 
-        .z = -10.0f,
+        .y = 5.0f, 
+        .z = 10.0f,
         .focal = -1.0f,
-        .wx = 0.3f,
-        .wy = 3.14f,
+        .wx = -0.2f,
+        .wy = 0.0f,
         .wz = -0.0f,
         .exposure = 1.0f
     };
@@ -65,7 +67,7 @@ int main()
     RD::SceneProperties sceneData;
     sceneData.lightCount[0] = 1;
     sceneData.lights[0] = {
-        .direction = {0.0f, -60.0f, 1000.0f},
+        .direction = {0.0f, -60.0f, -1000.0f},
         .color = {10.0f, 10.0f, 10.0f, 1.0f}
     };
 
@@ -87,7 +89,7 @@ int main()
     RD::Buffer rdSceneData = RD::CreateBuffer(plt, sizeof(RD::SceneProperties));
     RD::WriteBuffer(plt, rdSceneData, sizeof(sceneData), &sceneData);
 
-    RD::Scene* scene = RD::Scene::Load(modelFile, plt, true);
+    RD::Scene* scene = RD::Scene::Load(modelFile, plt, LOAD_CACHE);
 
     /* Build and configure pipeline */
     RD::DescriptorSet descSet = RD::CreateDescriptorSet({
@@ -143,6 +145,10 @@ void render(void* data, unsigned char** image, int* out_width, int* out_height)
     CbData *d = (CbData*) data;
     bool updated = false;
 
+#ifndef OFF_SCREEN
+    updated = RenderSceneConfigUI(d);
+#endif
+
     RD::TraceRays(d->plt, 0,0,0, d->extent[0], d->extent[1]);
 
     /* Fetch result */
@@ -167,4 +173,45 @@ void render(void* data, unsigned char** image, int* out_width, int* out_height)
     *out_height = d->extent[1];
     *out_width  = d->extent[0];
 #endif
+}
+
+
+bool RenderSceneConfigUI(CbData *d)
+{
+    bool updated = false;
+    Camera camData;
+    RD::ReadBuffer(d->plt, d->rdCamData, sizeof(camData), &camData);
+
+    RD::SceneProperties scene;
+    RD::ReadBuffer(d->plt, d->rdSceneData, sizeof(scene), &scene);
+
+    RD::RayTraceProperties RTProp;
+    RD::ReadBuffer(d->plt, d->rdRTProp, sizeof(RD::RayTraceProperties), &RTProp);
+
+    {
+        ImGui::Begin("Render Config");
+
+        ImGui::Text("Camera:");
+        updated |= ImGui::SliderFloat3("Camera Position", &camData.x, -20.0f, 20.0f);
+        updated |= ImGui::SliderFloat3("Camera Rotation", &camData.wx, -10.0f, 10.0f);
+        updated |= ImGui::SliderFloat("Camera focal", &camData.focal, -10.0f, 10.0f);
+
+        ImGui::Text("Light:");
+        updated |= ImGui::SliderFloat4("Light Direction", scene.lights[0].direction, -100.0f, 100.0f);
+        updated |= ImGui::SliderFloat4("Light Color", scene.lights[0].color, 0.0f, 100.0f);
+
+        ImGui::Text("Debug Mode:");
+        updated |= ImGui::DragInt("Debug", (int*)&RTProp.debug, 1.0f, 0, 10);
+
+        ImGui::End();
+    }
+
+    if (updated)
+    {
+        RD::WriteBuffer(d->plt, d->rdCamData, sizeof(camData), &camData);
+        RD::WriteBuffer(d->plt, d->rdSceneData, sizeof(scene), &scene);
+        RD::WriteBuffer(d->plt, d->rdRTProp, sizeof(RD::RayTraceProperties), &RTProp);
+    }
+
+    return updated;
 }
