@@ -29,10 +29,6 @@ struct Camera
 };
 
 void render(void* data, unsigned char** image, int* out_width, int* out_height);
-
-void GetInstanceList(std::vector<RD::Instance>& instanceList, RD::BottomAccelStruct rdBottomAS);
-void GetMaterialList(std::vector<RD::Material>& materialList);
-void GetSceneData(RD::SceneProperties* sceneData);
 bool RenderSceneConfigUI(CbData *d);
 
 int main()
@@ -72,7 +68,6 @@ int main()
         .direction = {0.0f, -60.0f, 1000.0f},
         .color = {10.0f, 10.0f, 10.0f, 1.0f}
     };
-
 
     /* Intialize platform */
     RD::Platform* plt = RD::Platform::GetPlatform();
@@ -172,13 +167,4 @@ void render(void* data, unsigned char** image, int* out_width, int* out_height)
     *out_height = d->extent[1];
     *out_width  = d->extent[0];
 #endif
-}
-
-void GetSceneData(RD::SceneProperties* sceneData)
-{
-    sceneData->lightCount[0] = 1;
-    sceneData->lights[0] = {
-        .direction = {0.0f, 60.0f, 20.0f},
-        .color = {10.0f, 10.0f, 10.0f, 1.0f}
-    };
 }
