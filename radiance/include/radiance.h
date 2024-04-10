@@ -88,8 +88,8 @@ struct Platform;
 BottomAccelStruct BuildAccelStruct(Platform* platform, Mesh& mesh);
 TopAccelStruct BuildAccelStruct(Platform* platform, std::vector<Instance>& instances);
 
-void TopAccelStructToFile(Platform* platform, TopAccelStruct accelStruct, char* path);
-void FileToTopAccelStruct(Platform* platform, char* path, TopAccelStruct* accelStruct);
+void TopAccelStructToFile(Platform* platform, TopAccelStruct accelStruct, const char* path);
+void FileToTopAccelStruct(Platform* platform, const char* path, TopAccelStruct* accelStruct);
 
 typedef uint32_t AddressingMode;
 // - Out-of-range image coordinates are clamped to the edge of the image.

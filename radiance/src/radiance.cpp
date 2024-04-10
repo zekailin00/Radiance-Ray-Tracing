@@ -400,7 +400,7 @@ TopAccelStruct _buildTopAccelStruct(CLContext* ctx,
 
 
 void TopAccelStructToFile(Platform* platform,
-    TopAccelStruct accelStruct, char* path)
+    TopAccelStruct accelStruct, const char* path)
 {
     AccelStructTop header;
     ReadBuffer(platform, accelStruct, sizeof(AccelStructTop), &header);
@@ -422,7 +422,7 @@ void TopAccelStructToFile(Platform* platform,
 }
 
 void FileToTopAccelStruct(Platform* platform,
-    char* path, TopAccelStruct* accelStruct)
+    const char* path, TopAccelStruct* accelStruct)
 {
     CLContext* ctx = platform->clContext;
     AccelStructTop header;

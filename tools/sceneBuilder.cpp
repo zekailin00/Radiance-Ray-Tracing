@@ -19,13 +19,12 @@
 
 
 #define TEX_DIM 2048 // Fixed dimension of textures in texture array for materials.
-#define BVH_CACHE_PATH "./bvh-cache.bin"
-// TODO: caching
+
 
 namespace RD
 {
 
-Scene* Scene::Load(std::string path, RD::Platform* plt)
+Scene* Scene::Load(std::string path, RD::Platform* plt, bool loadFromCache)
 {
     // Create an instance of the Importer class
     Assimp::Importer importer;
@@ -37,7 +36,6 @@ Scene* Scene::Load(std::string path, RD::Platform* plt)
         aiProcess_SortByPType);
 
     assert(scene != nullptr);
-    std::vector<RD::BottomAccelStruct> rdBotASList;
     RD::ImageArray rdTextureData = RD::CreateImageArray(plt, TEX_DIM, TEX_DIM, scene->mNumTextures);
     RD::Sampler rdSampler = RD::CreateSampler(plt, RD_ADDRESS_REPEAT, RD_FILTER_LINEAR);
 
@@ -71,7 +69,6 @@ Scene* Scene::Load(std::string path, RD::Platform* plt)
     for (int i = 0; i < scene->mNumMeshes; i++)
     {
         const aiMesh* mesh = scene->mMeshes[i];
-        RD::Mesh rdMesh;
 
         RD::MeshInfo meshInfo = { //FIXME: element offset
             .vertexOffset  = (int)(vertexList.size() * 3),// sizeof(RD::Vec3)),
@@ -83,8 +80,6 @@ Scene* Scene::Load(std::string path, RD::Platform* plt)
 
         for (size_t i = 0; i < mesh->mNumVertices; i++)
         {
-            rdMesh.vertexData.push_back(mesh->mVertices[i]);
-
             vertexList.push_back(mesh->mVertices[i]);
             normalList.push_back(mesh->mNormals[i]);
             uvList.push_back(mesh->mTextureCoords[0]?
@@ -95,12 +90,6 @@ Scene* Scene::Load(std::string path, RD::Platform* plt)
         {
             assert(mesh->mFaces[i].mNumIndices == 3);
 
-            rdMesh.indexData.push_back({
-                mesh->mFaces[i].mIndices[0],
-                mesh->mFaces[i].mIndices[1],
-                mesh->mFaces[i].mIndices[2]
-            });
-
             indexList.push_back({
                 mesh->mFaces[i].mIndices[0],
                 mesh->mFaces[i].mIndices[1],
@@ -109,7 +98,6 @@ Scene* Scene::Load(std::string path, RD::Platform* plt)
         }
 
         meshInfoList.push_back(meshInfo);
-        rdBotASList.push_back(RD::BuildAccelStruct(plt, rdMesh));
     }
 
     for (int i = 0; i < scene->mNumMaterials; i++)
@@ -218,12 +206,41 @@ Scene* Scene::Load(std::string path, RD::Platform* plt)
     RD::Buffer rdMatData = RD::CreateBuffer(plt, matSize);
     RD::WriteBuffer(plt, rdMatData, matSize, matList.data());
 
-    std::vector<RD::Instance> rdInstanceList;
-    BuildInstance(scene->mRootNode, rdInstanceList, 
-        RD::Mat4x4{}, scene, rdBotASList);
-    
-    RD::TopAccelStruct rdTopAS = RD::BuildAccelStruct(plt, rdInstanceList);
-    RD::TopAccelStructToFile(plt, rdTopAS, BVH_CACHE_PATH);
+
+    RD::TopAccelStruct rdTopAS;
+    if (loadFromCache)
+    {
+        std::string cachePath = path + ".cache";
+        RD::FileToTopAccelStruct(plt, cachePath.c_str(), &rdTopAS);
+    }
+    else
+    {
+        std::vector<RD::BottomAccelStruct> rdBotASList;
+        for (int i = 0; i < scene->mNumMeshes; i++)
+        {
+            const aiMesh* mesh = scene->mMeshes[i];
+            RD::Mesh rdMesh;
+
+            for (size_t i = 0; i < mesh->mNumVertices; i++)
+                rdMesh.vertexData.push_back(mesh->mVertices[i]);
+
+            for (size_t i = 0; i < mesh->mNumFaces; i++)
+                rdMesh.indexData.push_back({
+                    mesh->mFaces[i].mIndices[0],
+                    mesh->mFaces[i].mIndices[1],
+                    mesh->mFaces[i].mIndices[2]
+                });
+
+            rdBotASList.push_back(RD::BuildAccelStruct(plt, rdMesh));
+        }
+
+        std::vector<RD::Instance> rdInstanceList;
+        BuildInstance(scene->mRootNode, rdInstanceList, RD::Mat4x4{}, scene, rdBotASList);
+        
+        rdTopAS = RD::BuildAccelStruct(plt, rdInstanceList);
+        std::string cachePath = path + ".cache";
+        RD::TopAccelStructToFile(plt, rdTopAS, cachePath.c_str());
+    }
 
     RD::Scene* rdScene = new RD::Scene();
     rdScene->meshInfoData   = rdMeshInfoData;
@@ -235,7 +252,6 @@ Scene* Scene::Load(std::string path, RD::Platform* plt)
     rdScene->textureData    = rdTextureData;
     rdScene->sampler        = rdSampler;
     rdScene->topAccelStruct = rdTopAS;
-    rdScene->botASList      = rdBotASList;
 
     return rdScene;
 }

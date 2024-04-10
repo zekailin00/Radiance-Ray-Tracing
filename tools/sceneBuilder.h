@@ -34,7 +34,7 @@ namespace RD
 struct Scene
 {
 public:
-    static Scene* Load(std::string path, RD::Platform* plt);
+    static Scene* Load(std::string path, RD::Platform* plt, bool loadFromCache = false);
 
     RD::Buffer meshInfoData;
     RD::Buffer vertexData;
@@ -47,7 +47,6 @@ public:
     RD::Sampler sampler;
 
     RD::TopAccelStruct topAccelStruct;
-    std::vector<RD::BottomAccelStruct> botASList;
 
 private:
     static void BuildInstance(aiNode* node, std::vector<RD::Instance>& rdInstanceList,
