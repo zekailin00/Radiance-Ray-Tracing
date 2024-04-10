@@ -16,7 +16,7 @@ struct Payload
 
 struct SceneData
 {
-    float*                     camData;
+    struct Camera*             camData;
     struct SceneProperties*    scene;
     
     struct MeshInfo*           meshInfoData;
@@ -32,12 +32,18 @@ struct SceneData
     unsigned int               debug;
 };
 
+struct Camera
+{
+    float x, y, z, focal;
+    float wx, wy, wz, exposure;
+};
+
 __kernel void raygen(
     __global struct RayTraceProperties* RTProp,
     __global float*                     imageScratch,
     __global uchar*                     image /* <row major> */,
     __global unsigned int*              extent /* <x,y> */,
-    __global float*                     camData,
+    __global struct Camera*             camData,
     __global struct SceneProperties*    scene,
 
     __global struct MeshInfo*           meshInfoData,
@@ -74,18 +80,28 @@ __kernel void raygen(
         float fx = (((float)x + random.x)/ (float)extent[0]) - 0.5;
         float fy = 0.5 - (((float)y + random.y) / (float)extent[1]);
 
-        float f0 = -1; // focal length
-        float3 dir = {fx, fy, f0}; /* range [-0.5, 0.5] */
+        float f0 = camData->focal; // focal length
+        float4 dir = {fx, fy, f0, 0.0f}; /* range [-0.5, 0.5] */
         dir = normalize(dir);
-        float3 origin = {camData[0], camData[1], camData[2]};
+        float3 origin = {camData->x, camData->y, camData->z};
 
         // Transform camera position
-        float theta = camData[3];
-        float3 c0 = {cos(theta), 0, -sin(theta)};
-        float3 c1 = {0         , 1,  0         };
-        float3 c2 = {sin(theta), 0,  cos(theta)};
-        dir = dir[0] * c0 + dir[1] * c1 + dir[2] * c2;
+        // float theta = camData->wy;
 
+        // float3 c0 = {cos(theta), 0, -sin(theta)};
+        // float3 c1 = {0         , 1,  0         };
+        // float3 c2 = {sin(theta), 0,  cos(theta)};
+        // dir = dir[0] * c0 + dir[1] * c1 + dir[2] * c2;
+
+        mat4x4 rotX, rotY, rotZ;
+        float4 tmpDir;
+        EulerXToMat4x4(camData->wx, &rotX);
+        EulerYToMat4x4(camData->wy, &rotY);
+        EulerZToMat4x4(camData->wz, &rotZ);
+        MultiplyMat4Vec4(&rotZ, &dir, &tmpDir);
+        MultiplyMat4Vec4(&rotY, &tmpDir, &dir);
+        MultiplyMat4Vec4(&rotX, &dir, &tmpDir);
+        dir = normalize(tmpDir);
 
         struct Payload payload;
         payload.x = x;
@@ -95,7 +111,7 @@ __kernel void raygen(
         payload.color[2] = 0.0f;
         payload.nextFactor = 1.0f;
         payload.nextRayOrigin = origin;
-        payload.nextRayDirection = dir;
+        payload.nextRayDirection = dir.xyz;
 
         struct SceneData sceneData;
         sceneData.camData       = camData;
@@ -308,9 +324,9 @@ void material(struct Payload* payload, struct HitData* hitData,
 
     float3 origin = hitData->hitPoint + hitData->translate + N * 0.0001f;
     float3 viewPos = {
-        sceneData->camData[0],
-        sceneData->camData[1],
-        sceneData->camData[2]};
+        sceneData->camData->x,
+        sceneData->camData->y,
+        sceneData->camData->z};
     float3 V = normalize(viewPos - origin);
     float3 L = normalize(-scene->lights[0].direction.xyz);
 

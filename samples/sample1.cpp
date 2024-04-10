@@ -22,6 +22,12 @@ struct CbData
     RD::Buffer rdRTProp;
 };
 
+struct Camera
+{
+    float x, y, z, focal;
+    float wx, wy, wz, exposure;
+};
+
 void render(void* data, unsigned char** image, int* out_width, int* out_height);
 
 void GetInstanceList(std::vector<RD::Instance>& instanceList, RD::BottomAccelStruct rdBottomAS);
@@ -32,7 +38,9 @@ bool RenderSceneConfigUI(CbData *d);
 int main()
 {
     std::string modelFile =
-        "/home/zekailin00/Desktop/ray-tracing/framework/assets/scene-loader-test.gltf";
+        "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell2.glb";
+        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/scene-loader-test2.glb";
+        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/c2.glb";
     std::string shaderPath =
         "/home/zekailin00/Desktop/ray-tracing/framework/samples/shader.cl";
     unsigned int extent[2] = {1080, 1080};
@@ -42,17 +50,26 @@ int main()
     /* Define pipeline data inputs */
     RD::RayTraceProperties RTProp = {
         .totalSamples = 0,
-        .batchSize = 10,
-        .depth = 2,
+        .batchSize = 20,
+        .depth = 3,
         .debug = 0
     };
 
-    float camData[4] = {0.0f, -1.0f, -30.0f, 3.14f};
+    struct Camera camData = {
+        .x =  0.0f,
+        .y = 6.0f, 
+        .z = -10.0f,
+        .focal = -1.0f,
+        .wx = 0.3f,
+        .wy = 3.14f,
+        .wz = -0.0f,
+        .exposure = 1.0f
+    };
 
     RD::SceneProperties sceneData;
     sceneData.lightCount[0] = 1;
     sceneData.lights[0] = {
-        .direction = {0.0f, 60.0f, 20.0f},
+        .direction = {0.0f, -60.0f, 1000.0f},
         .color = {10.0f, 10.0f, 10.0f, 1.0f}
     };
 
@@ -70,12 +87,12 @@ int main()
     RD::Buffer rdImageScratch = RD::CreateBuffer(plt, extent[0] * extent[1] * CHANNEL * sizeof(float));
 
     RD::Buffer rdCamData = RD::CreateBuffer(plt, sizeof(camData));
-    RD::WriteBuffer(plt, rdCamData, sizeof(camData), camData);
+    RD::WriteBuffer(plt, rdCamData, sizeof(camData), &camData);
 
     RD::Buffer rdSceneData = RD::CreateBuffer(plt, sizeof(RD::SceneProperties));
     RD::WriteBuffer(plt, rdSceneData, sizeof(sceneData), &sceneData);
 
-    RD::Scene* scene = RD::Scene::Load(modelFile, plt);
+    RD::Scene* scene = RD::Scene::Load(modelFile, plt, true);
 
     /* Build and configure pipeline */
     RD::DescriptorSet descSet = RD::CreateDescriptorSet({
