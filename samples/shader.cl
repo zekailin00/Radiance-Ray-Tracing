@@ -86,13 +86,6 @@ __kernel void raygen(
         float3 origin = {camData->x, camData->y, camData->z};
 
         // Transform camera position
-        // float theta = camData->wy;
-
-        // float3 c0 = {cos(theta), 0, -sin(theta)};
-        // float3 c1 = {0         , 1,  0         };
-        // float3 c2 = {sin(theta), 0,  cos(theta)};
-        // dir = dir[0] * c0 + dir[1] * c1 + dir[2] * c2;
-
         mat4x4 rotX, rotY, rotZ;
         float4 tmpDir;
         EulerXToMat4x4(camData->wx, &rotX);
