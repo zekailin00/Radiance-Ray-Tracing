@@ -1,3 +1,6 @@
+#ifndef MATH_CL
+#define MATH_CL
+
 typedef float16 mat4x4;
 typedef float3 vec3;
 typedef float4 vec4;
@@ -262,3 +265,36 @@ void Vec4ToMat4x4(vec4* r0, vec4* r1, vec4* r2, vec4* r3, mat4x4* out)
     out->s89ab = *r2;
     out->scdef = *r3;
 }
+
+void GetNormalSpace(float3 normal, mat4x4* out)
+{
+    float3 someVec = {1.0, 0.0, 0.0};
+    float dd = dot(someVec, normal);
+    float3 tangent = {0.0, 1.0, 0.0};
+    if(1.0 - fabs(dd) > 1e-6) {
+        tangent = normalize(cross(someVec, normal));
+    }
+    float3 bitangent = cross(normal, tangent);
+    
+    out->s0 = tangent.x;
+    out->s4 = tangent.y;
+    out->s8 = tangent.z;
+    out->sc = 0;
+
+    out->s1 = bitangent.x;
+    out->s5 = bitangent.y;
+    out->s9 = bitangent.z;
+    out->sd = 0;
+
+    out->s2 = normal.x;
+    out->s6 = normal.y;
+    out->sa = normal.z;
+    out->se = 0;
+
+    out->s3 = 0;
+    out->s7 = 0;
+    out->sb = 0;
+    out->sf = 1;
+}
+
+#endif

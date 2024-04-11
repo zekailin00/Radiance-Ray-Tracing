@@ -290,9 +290,7 @@ void material(struct Payload* payload, struct HitData* hitData,
         albedoFrag.z = clamp(tex.z / 255.0f, 0.0f, 1.0f);
     }
 
-    float3 N;
-    if (true)//(material->normalTexIdx == -1)/FIXME: transform normal
-    {
+    float3 N; {
         float4 n0 = {normalData[no + i0 * 3 + 0], normalData[no + i0 * 3 + 1], normalData[no + i0 * 3 + 2], 0.0f};
         float4 n1 = {normalData[no + i1 * 3 + 0], normalData[no + i1 * 3 + 1], normalData[no + i1 * 3 + 2], 0.0f};
         float4 n2 = {normalData[no + i2 * 3 + 0], normalData[no + i2 * 3 + 1], normalData[no + i2 * 3 + 2], 0.0f};
@@ -303,17 +301,23 @@ void material(struct Payload* payload, struct HitData* hitData,
         MultiplyMat4Vec4(&hitData->transform, &normal, &tmp);
         N = normalize(tmp.xyz);
     }
-    else
+
+    if (material->normalTexIdx != -1)
     {
         float4 coord = {uv.x, 1.0f - uv.y, (float)material->normalTexIdx, 0.0f};
         uint4 tex = read_imageui(imageArray, sampler, coord);
-        float4 normal = {
+        float4 localNormal = {
             clamp(tex.x / 255.0f, 0.0f, 1.0f),
             clamp(tex.y / 255.0f, 0.0f, 1.0f),
             clamp(tex.z / 255.0f, 0.0f, 1.0f),
             0.0f
         };
-        N = normalize(normal.xyz);
+        localNormal = normalize(localNormal * 2.0f - 1.0f);
+        mat4x4 transform;
+        GetNormalSpace(N, &transform);
+        float4 globalNormal;
+        MultiplyMat4Vec4(&transform, &localNormal, &globalNormal);
+        N = globalNormal.xyz;
     }
 
     struct SceneProperties* scene = sceneData->scene;

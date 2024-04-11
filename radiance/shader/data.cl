@@ -1,3 +1,5 @@
+#ifndef DATA_CL
+#define DATA_CL
 
 struct AccelStructTop // 1 block
 {
@@ -271,3 +273,5 @@ Example:
 +--------+--------+--------+--------+--------+--------+--------+--------+--------+--------+
 
 */
+
+#endif
