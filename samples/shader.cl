@@ -185,7 +185,7 @@ __kernel void raygen(
         color = color / (color + 1.0f);
 
         // Gamma correct
-        // color = pow(color, 0.4545f);
+        color = pow(color, 0.4545f);
     }
 
     image[CHANNEL * index + 0] = (int)(color[0] * 255);
@@ -425,6 +425,22 @@ void material(struct Payload* payload, struct HitData* hitData,
         payload->color.x = hitData->barycentric.x;
         payload->color.y = hitData->barycentric.y;
         payload->color.z = hitData->barycentric.z;
+    }
+    else if (sceneData->debug == 8)
+    {
+        payload->color = albedoFrag;
+    }
+    else if (sceneData->debug == 9)
+    {
+        payload->color.x = metallicFrag;
+        payload->color.y = metallicFrag;
+        payload->color.z = metallicFrag;
+    }
+    else if (sceneData->debug == 10)
+    {
+        payload->color.x = roughnessFrag;
+        payload->color.y = roughnessFrag;
+        payload->color.z = roughnessFrag;
     }
 
     // // [debug] custom inst index viz
