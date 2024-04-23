@@ -471,6 +471,24 @@ void material(struct Payload* payload, struct HitData* hitData,
         payload->color.y = roughnessFrag;
         payload->color.z = roughnessFrag;
     }
+    else if (sceneData->debug == 11)
+    {   // Diffuse component
+        float3 H = normalize(V + L);
+        float dotVH = clamp(dot(V, H), 0.0f, 1.0f);
+        float dotNV = clamp(dot(N, V), 0.0f, 1.0f);
+        float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
+        float3 F = F_Schlick(dotVH, metallicFrag, albedoFrag);
+        float3 c_diff = albedoFrag * (1.0f - metallicFrag);
+        float3 f_diffuse  = (1 - F) * (1 / 3.1415f) * c_diff;
+        payload->color = f_diffuse;
+    }
+    else if (sceneData->debug == 12)
+    {   // Frensel reflection
+        float3 H = normalize(V + L);
+        float dotVH = clamp(dot(V, H), 0.0f, 1.0f);
+        float3 F = F_Schlick(dotVH, metallicFrag, albedoFrag);
+        payload->color = F;
+    }
 
     // // [debug] custom inst index viz
     // payload->color[0] = (uchar)hitData->instanceCustomIndex;

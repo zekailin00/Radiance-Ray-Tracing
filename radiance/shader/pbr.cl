@@ -31,6 +31,17 @@ float3 F_Schlick(float cosTheta, float metallic, float3 albedo)
 	return F;
 }
 
+// Disney diffuse function ----------------------------------------------
+float3 Diffuse_Disney(float3 c_diff, float roughness, float dotNL, float dotNV, float dotVH)
+{
+    float3 reflectance =  (1 / PI) * c_diff;
+    float FD90 = 0.5 + 2 * roughness * dotVH * dotVH;
+    float factorNL = (1 + (FD90 - 1) * pow(1 - dotNL, 5.0f));
+    float factorNV = (1 + (FD90 - 1) * pow(1 - dotNV, 5.0f));
+    float3 disneyDiffuse = reflectance * factorNL * factorNV;
+    return reflectance;
+}
+
 float3 BRDF(float3 L, float3 V, float3 N, float metallic, float roughness, float3 albedo)
 {
 	// Precalculate vectors and dot products	
@@ -51,6 +62,7 @@ float3 BRDF(float3 L, float3 V, float3 N, float metallic, float roughness, float
 
 		float3 c_diff = albedo * (1.0f - metallic);
 		float3 f_diffuse  = (1 - F) * (1 / PI) * c_diff;
+        // float3 f_diffuse  = (1 - F) * Diffuse_Disney(c_diff, roughness, dotNL, dotNV, dotVH);
 		float3 f_specular = F * D * G / max(4.0f * dotNL * dotNV, 0.0001f);
 
 		color += (f_diffuse + f_specular) * (dotNL);
