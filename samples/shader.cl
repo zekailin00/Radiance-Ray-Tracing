@@ -38,6 +38,48 @@ struct Camera
     float wx, wy, wz, exposure;
 };
 
+float3 aces_approx(float3 v)
+{
+    v *= 0.6f;
+    float a = 2.51f;
+    float b = 0.03f;
+    float c = 2.43f;
+    float d = 0.59f;
+    float e = 0.14f;
+    return clamp((v*(a*v+b))/(v*(c*v+d)+e), 0.0f, 1.0f);
+}
+
+float3 uncharted2_tonemap_partial(float3 x)
+{
+    float A = 0.15f;
+    float B = 0.50f;
+    float C = 0.10f;
+    float D = 0.20f;
+    float E = 0.02f;
+    float F = 0.30f;
+    return ((x*(A*x+C*B)+D*E)/(x*(A*x+B)+D*F))-E/F;
+}
+
+float3 uncharted2_filmic(float3 v)
+{
+    float exposure_bias = 2.0f;
+    float3 curr = uncharted2_tonemap_partial(v * exposure_bias);
+
+    float3 W = 11.2f;
+    float3 white_scale = 1.0f / uncharted2_tonemap_partial(W);
+    return clamp(curr * white_scale, 0.0f, 1.0f);
+}
+
+float3 clamping(float3 v)
+{
+    return clamp(v, 0.0f, 1.0f);
+}
+
+float3 reinhard(float3 v)
+{
+    return v / (v + 1.0f);
+}
+
 __kernel void raygen(
     __global struct RayTraceProperties* RTProp,
     __global float*                     imageScratch,
@@ -182,7 +224,10 @@ __kernel void raygen(
     if (!RTProp->debug)
     {
         // HDR mapping
-        color = color / (color + 1.0f);
+        // color = reinhard(color);
+        // color = clamping(color);
+        color = aces_approx(color);
+        // color = uncharted2_filmic(color);
 
         // Gamma correct
         color = pow(color, 0.4545f);
@@ -193,22 +238,6 @@ __kernel void raygen(
     image[CHANNEL * index + 2] = (int)(color[2] * 255);
     image[CHANNEL * index + 3] = 255;
 }
-
-// printNormalDebug(float3 n0, float3 n1, float3 n2, float3 bary)
-// {
-//     printf( "n0: <%f, %f, %f>\n"
-//             "n1: <%f, %f, %f>\n"
-//             "n2: <%f, %f, %f>\n"
-//             , n0[0], n0[1], n0[2]
-//             , n1[0], n1[1], n1[2]
-//             , n2[0], n2[1], n2[2]);
-// }
-
-// printIndexDebug(uint idx0, uint idx1, uint idx2)
-// {
-//     printf( "idx: <%d, %d, %d>\n"
-//             , idx0, idx1, idx2);
-// }
 
 void shadow(struct Payload* payload, struct HitData* hitData,
     struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
@@ -317,7 +346,7 @@ void material(struct Payload* payload, struct HitData* hitData,
         GetNormalSpace(N, &transform);
         float4 globalNormal;
         MultiplyMat4Vec4(&transform, &localNormal, &globalNormal);
-        N = globalNormal.xyz;
+        N = normalize(globalNormal.xyz);
     }
 
     struct SceneProperties* scene = sceneData->scene;
