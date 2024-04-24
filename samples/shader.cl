@@ -375,7 +375,7 @@ void material(struct Payload* payload, struct HitData* hitData,
     }
 
     // Combine with ambient
-    color += albedoFrag * 0.15f;
+    color += albedoFrag * 0.1f;
 
     payload->color[0] = color.x;
     payload->color[1] = color.y;

@@ -167,9 +167,16 @@ int main()
     };
 
 #ifdef OFF_SCREEN
+    time_t ltime;
+    time(&ltime);
+    char* time = ctime(&ltime);
+    std::string fileName = "output.";
+    fileName += time;
+    fileName += ".jpg";
+
     render((void*)&data, nullptr, nullptr, nullptr);
+    stbi_write_jpg(fileName.c_str(), extent[0], extent[1], RD_CHANNEL, data.image, 100);
     printf("Writing image with extent: <%d, %d>\n", extent[0], extent[1]);
-    stbi_write_jpg("output.jpg", extent[0], extent[1], RD_CHANNEL, data.image, 100);
 #else
     renderLoop(render, &data);
 #endif

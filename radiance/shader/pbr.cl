@@ -9,17 +9,7 @@ float D_GGX(float dotNH, float roughness)
 	float alpha = roughness * roughness;
 	float alpha2 = alpha * alpha;
 	float denom = dotNH * dotNH * (alpha2 - 1.0) + 1.0;
-	return  (alpha2 * dotNH)/(PI * denom*denom); 
-}
-
-// Geometric Shadowing function --------------------------------------
-float G_SchlicksmithGGX(float dotNL, float dotNV, float roughness)
-{
-	float r = (roughness + 1.0);
-	float k = (r*r) / 8.0;
-	float GL = dotNL / (dotNL * (1.0 - k) + k);
-	float GV = dotNV / (dotNV * (1.0 - k) + k);
-	return GL * GV;
+	return  (alpha2)/(PI * denom*denom); 
 }
 
 // Disney Geometric Shadowing function ----------------------------------
@@ -46,6 +36,45 @@ float3 F_Schlick(float cosTheta, float metallic, float3 albedo)
 	return F;
 }
 
+////////////////// Not Used ////////////////////
+
+
+// Geometric Shadowing function --------------------------------------
+float G_SchlicksmithGGX(float dotNL, float dotNV, float roughness)
+{
+	float r = (roughness + 1.0);
+	float k = (r*r) / 8.0;
+	float GL = dotNL / (dotNL * (1.0 - k) + k);
+	float GV = dotNV / (dotNV * (1.0 - k) + k);
+	return GL * GV;
+}
+
+float D_GGX_not_remapped(float NoH, float roughness)
+{
+    //FIXME: remapping inside or outside?
+    // no remapping
+    float a = NoH * roughness;
+    float k = roughness / (1.0 - NoH * NoH + a * a);
+    return k * k * (1.0 / PI);
+}
+
+// Roughness Remapping -------------------------------------------------
+float Roughness_Remap(float roughness)
+{
+    roughness = max(0.05f, roughness);
+    roughness = roughness * roughness;
+    return roughness;
+}
+
+// Geometric Shadowing function Filament -----------------------------------
+float G_SmithGGXCorrelated(float NoL, float NoV, float roughness)
+{
+    float a2 = roughness * roughness;
+    float GGXL = NoV * sqrt((-NoL * a2 + NoL) * NoL + a2);
+    float GGXV = NoL * sqrt((-NoV * a2 + NoV) * NoV + a2);
+    return 0.5 / (GGXV + GGXL);
+}
+
 // Disney diffuse function ----------------------------------------------
 float3 Diffuse_Disney(float3 c_diff, float roughness, float dotNL, float dotNV, float dotVH)
 {
@@ -57,9 +86,12 @@ float3 Diffuse_Disney(float3 c_diff, float roughness, float dotNL, float dotNV, 
     return reflectance;
 }
 
+//////////////////////////////////////////////////
+
 float3 BRDF(float3 L, float3 V, float3 N, float metallic, float roughness, float3 albedo)
 {
-	// Precalculate vectors and dot products	
+    roughness = max(0.05f, roughness);
+
 	float3 H = normalize(V + L);
 	float dotNV = clamp(dot(N, V), 0.0f, 1.0f);
 	float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
@@ -67,22 +99,15 @@ float3 BRDF(float3 L, float3 V, float3 N, float metallic, float roughness, float
 	float dotVH = clamp(dot(V, H), 0.0f, 1.0f);
 
 	float3 color = {0.0f, 0.0f, 0.0f};
-	if (dot(N, L) > 0.0)
-	{
-		float rroughness = max(0.05f, roughness);
+    float  D = D_GGX(dotNH, roughness); 
+    float  G = G_Smith_Disney(dotNL, dotNV, roughness);
+    float3 F = F_Schlick(dotVH, metallic, albedo);
 
-		float  D = D_GGX(dotNH, roughness); 
-		float  G = G_SchlicksmithGGX(dotNL, dotNV, rroughness);
-		float3 F = F_Schlick(dotVH, metallic, albedo);
+    float3 c_diff = albedo * (1.0f - metallic);
+    float3 f_diffuse  = (1 - F) * (1 / PI) * c_diff;
+    float3 f_specular = F * D * G / max(4.0f * dotNL * dotNV, 0.001f);
 
-		float3 c_diff = albedo * (1.0f - metallic);
-		float3 f_diffuse  = (1 - F) * (1 / PI) * c_diff;
-        // float3 f_diffuse  = (1 - F) * Diffuse_Disney(c_diff, roughness, dotNL, dotNV, dotVH);
-		float3 f_specular = F * D * G / max(4.0f * dotNL * dotNV, 0.0001f);
-
-		color += (f_diffuse + f_specular) * (dotNL);
-	}
-
+    color += (f_diffuse + f_specular) * (dotNL);
 	return color;
 }
 
@@ -147,10 +172,11 @@ float3 sampleMicrofacetBRDF(
 		float VoH = clamp(dot(V, H.xyz), 0.0f, 1.0f);
 
 		// specular microfacet (cook-torrance) BRDF
-        float rroughness = max(0.05f, roughness);
+        roughness = max(0.05f, roughness);
 
 		float  D = D_GGX(NoH, roughness);
-		float  G = G_SchlicksmithGGX(NoL, NoV, rroughness);
+		// float  G = G_SmithGGXCorrelated(NoL, NoV, roughness*roughness);
+        float  G = G_Smith_Disney(NoL, NoV, roughness);
         float3 F = F_Schlick(VoH, metallicness, baseColor);
 
 		*nextFactor = F * G * VoH / max((NoH * NoV), 0.001f);
@@ -198,8 +224,3 @@ struct SceneProperties
     uint4 lightCount; // only 1st is used
     struct DirLight lights[5];
 };
-
-// layout (set = 0, binding = 1) uniform sampler2D AlbedoTexture;
-// layout (set = 0, binding = 2) uniform sampler2D MetallicTexture;
-// layout (set = 0, binding = 3) uniform sampler2D RoughnessTexture;
-// layout (set = 0, binding = 4) uniform sampler2D NormalTexture;
