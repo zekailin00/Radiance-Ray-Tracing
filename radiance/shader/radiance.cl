@@ -24,6 +24,8 @@ void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitDa
     struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler);
 void callMiss(int missIndex, struct Payload* payload, 
     struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler);
+void callAnyHit(bool* cont, int sbtRecordOffset, struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler);
 /* User defined end */
 
 
@@ -38,7 +40,8 @@ bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax
 
 bool intersectBot(
     struct AccelStruct* accelStruct, float3 origin, float3 direction,
-    float Tmin, float Tmax, struct HitData* hitData)
+    float Tmin, float Tmax, struct HitData* hitData, bool* cont, int sbtRecordOffset,
+    struct Payload* payload, struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
 {
     bool hasIntersected = false;
 	unsigned int stack[BVH_BOT_STACK_SIZE];     // Stack pointing to BVH node index
@@ -93,8 +96,9 @@ bool intersectBot(
                     hitData->barycentric    = bary;
 
                     hasIntersected = true;
-                    // bool cont = true;
-                    // anyHit(&cont);
+                    callAnyHit(cont, sbtRecordOffset, payload, hitData, sceneData, imageArray, sampler);
+                    if (*cont == false)
+                        return hasIntersected;
                 }
             }
         }
@@ -105,12 +109,14 @@ bool intersectBot(
 
 bool intersectTop(
     struct AccelStruct* accelStruct, float3 origin, float3 direction,
-    float Tmin, float Tmax, struct HitData* hitData)
+    float Tmin, float Tmax, struct HitData* hitData, int sbtRecordOffset,
+    struct Payload* payload, struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
 {
     bool hasIntersected = false;
 	unsigned int stack[BVH_TOP_STACK_SIZE];     // Stack pointing to BVH node index
 	int stackIdx = 0;                       // Always point to the first empty element
 	stack[stackIdx++] = 0;
+    bool cont = true;
 
 	// while the stack is not empty
 	while (stackIdx)
@@ -166,8 +172,11 @@ bool intersectTop(
                 hitData->instanceCustomIndex = instance->customInstanceID;
                 hitData->instanceSBTOffset   = instance->SBTOffset;
 
-                bool result = intersectBot(botAccelStruct, localOrigin.xyz, localDir.xyz, Tmin, Tmax, hitData);
+                bool result = intersectBot(botAccelStruct, localOrigin.xyz, localDir.xyz, Tmin, Tmax,
+                    hitData, &cont, sbtRecordOffset, payload, sceneData, imageArray, sampler);
                 hasIntersected = hasIntersected || result;
+                if (cont == false)
+                    return hasIntersected;
                 if (!result)
                 {
                     hitData->transform = transform;
@@ -254,7 +263,8 @@ void traceRay(
 {
     struct HitData hitData;
     hitData.distance = FLT_MAX;
-    if (intersectTop(topLevel, origin, direction, Tmin, Tmax, &hitData))
+    if (intersectTop(topLevel, origin, direction, Tmin, Tmax, &hitData, sbtRecordOffset,
+        payload, sceneData, imageArray, sampler))
     {
         callHit(sbtRecordOffset, payload, &hitData, sceneData, imageArray, sampler);
     }

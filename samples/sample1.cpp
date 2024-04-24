@@ -7,7 +7,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-// #define OFF_SCREEN
+#define OFF_SCREEN
 #define LOAD_CACHE true
 
 struct CbData
@@ -35,39 +35,75 @@ bool RenderSceneConfigUI(CbData *d);
 int main()
 {
     std::string modelFile =
-        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell2.glb";
-        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/sample2.glb";
-        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/scene-loader-test2.glb";
-        "/home/zekailin00/Desktop/ray-tracing/framework/assets/c2.glb"; //armor
+        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell2.glb"; // helmet
+        "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell-armor.glb"; //armor
+        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/sample1.glb";
     std::string shaderPath =
         "/home/zekailin00/Desktop/ray-tracing/framework/samples/shader.cl";
-    unsigned int extent[2] = {1080, 1080};
+    unsigned int extent[2] = {4000, 4000};
     size_t imageSize = extent[0] * extent[1] * RD_CHANNEL;
     uint8_t* image = (uint8_t*)malloc(imageSize);
 
     /* Define pipeline data inputs */
     RD::RayTraceProperties RTProp = {
         .totalSamples = 0,
-        .batchSize = 1,
+        .batchSize = 10,
         .depth = 8,
         .debug = 0
     };
 
+    // // sample1
+    // struct Camera camData = {
+    //     .x =  -1.0f,
+    //     .y = 2.0f, 
+    //     .z = 1.0f,
+    //     .focal = -1.0f,
+    //     .wx = -0.0f,
+    //     .wy = -0.6f,
+    //     .wz = -0.0f,
+    //     .exposure = 1.0f
+    // };
+    // RD::SceneProperties sceneData;
+    // sceneData.lightCount[0] = 1;
+    // sceneData.lights[0] = {
+    //     .direction = {100.0f, -10.0f, 10.0f},
+    //     .color = {15.0f, 15.0f, 15.0f, 1.0f}
+    // };
+
+
+    // // cornell
+    // struct Camera camData = {
+    //     .x = 0.0f,
+    //     .y = 6.0f, 
+    //     .z = -10.0f,
+    //     .focal = -1.0f,
+    //     .wx = 0.3f,
+    //     .wy = 3.14f,
+    //     .wz = -0.0f,
+    //     .exposure = 1.0f
+    // };
+    // RD::SceneProperties sceneData;
+    // sceneData.lightCount[0] = 1;
+    // sceneData.lights[0] = {
+    //     .direction = {0.0f, -1.0f, 100.0f},
+    //     .color = {10.0f, 10.0f, 10.0f, 1.0f}
+    // };
+
+    // cornell - details
     struct Camera camData = {
-        .x =  0.0f,
-        .y = 5.0f, 
-        .z = 10.0f,
+        .x = 0.0f,
+        .y = 7.5f, 
+        .z = -8.0f,
         .focal = -1.0f,
-        .wx = -0.2f,
-        .wy = 0.0f,
+        .wx = 0.4f,
+        .wy = 3.14f,
         .wz = -0.0f,
         .exposure = 1.0f
     };
-
     RD::SceneProperties sceneData;
     sceneData.lightCount[0] = 1;
     sceneData.lights[0] = {
-        .direction = {0.0f, -60.0f, -1000.0f},
+        .direction = {0.0f, 1.0f, 10.0f},
         .color = {10.0f, 10.0f, 10.0f, 1.0f}
     };
 
@@ -132,6 +168,7 @@ int main()
 
 #ifdef OFF_SCREEN
     render((void*)&data, nullptr, nullptr, nullptr);
+    printf("Writing image with extent: <%d, %d>\n", extent[0], extent[1]);
     stbi_write_jpg("output.jpg", extent[0], extent[1], RD_CHANNEL, data.image, 100);
 #else
     renderLoop(render, &data);
@@ -192,7 +229,7 @@ bool RenderSceneConfigUI(CbData *d)
         ImGui::Begin("Render Config");
 
         ImGui::Text("Camera:");
-        updated |= ImGui::SliderFloat3("Camera Position", &camData.x, -20.0f, 20.0f);
+        updated |= ImGui::SliderFloat3("Camera Position", &camData.x, -40.0f, 40.0f);
         updated |= ImGui::SliderFloat3("Camera Rotation", &camData.wx, -10.0f, 10.0f);
         updated |= ImGui::SliderFloat("Camera focal", &camData.focal, -10.0f, 10.0f);
 
@@ -201,7 +238,16 @@ bool RenderSceneConfigUI(CbData *d)
         updated |= ImGui::SliderFloat4("Light Color", scene.lights[0].color, 0.0f, 100.0f);
 
         ImGui::Text("Debug Mode:");
-        updated |= ImGui::DragInt("Debug", (int*)&RTProp.debug, 1.0f, 0, 10);
+        updated |= ImGui::DragInt("Debug", (int*)&RTProp.debug, 1.0f, 0, 20);
+        if (ImGui::Button("Previous Debug")){
+            RTProp.debug++;
+            updated = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Next Debug")){
+            RTProp.debug--;
+            updated = true;
+        }
 
         ImGui::End();
     }

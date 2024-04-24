@@ -230,21 +230,13 @@ __kernel void raygen(
         // color = uncharted2_filmic(color);
 
         // Gamma correct
-        color = pow(color, 0.4545f);
+        // color = pow(color, 0.4545f);
     }
 
     image[CHANNEL * index + 0] = (int)(color[0] * 255);
     image[CHANNEL * index + 1] = (int)(color[1] * 255);
     image[CHANNEL * index + 2] = (int)(color[2] * 255);
     image[CHANNEL * index + 3] = 255;
-}
-
-void shadow(struct Payload* payload, struct HitData* hitData,
-    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
-{
-    // Shadow test
-    payload->hit = true;
-    payload->color = 0.0f;
 }
 
 void material(struct Payload* payload, struct HitData* hitData,
@@ -383,7 +375,7 @@ void material(struct Payload* payload, struct HitData* hitData,
     }
 
     // Combine with ambient
-    color += albedoFrag * 0.05f;
+    color += albedoFrag * 0.15f;
 
     payload->color[0] = color.x;
     payload->color[1] = color.y;
@@ -475,8 +467,6 @@ void material(struct Payload* payload, struct HitData* hitData,
     {   // Diffuse component
         float3 H = normalize(V + L);
         float dotVH = clamp(dot(V, H), 0.0f, 1.0f);
-        float dotNV = clamp(dot(N, V), 0.0f, 1.0f);
-        float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
         float3 F = F_Schlick(dotVH, metallicFrag, albedoFrag);
         float3 c_diff = albedoFrag * (1.0f - metallicFrag);
         float3 f_diffuse  = (1 - F) * (1 / 3.1415f) * c_diff;
@@ -512,6 +502,31 @@ void environment(struct Payload* payload,
     payload->color.z = 0.5;
 }
 
+void shadow(struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
+{
+    // Shadow test
+    payload->hit = true;
+    payload->color = 0.0f;
+}
+
+void anyShadow(bool* cont, struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
+{
+    // Shadow test
+    *cont = false;
+}
+
+void callAnyHit(bool* cont, int sbtRecordOffset, struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
+{
+
+    int index = hitData->instanceSBTOffset + sbtRecordOffset;
+    switch (index)
+    {
+		case 2:anyShadow(cont, payload, hitData, sceneData, imageArray, sampler);break;
+    }
+}
 
 void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitData,
     struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
@@ -521,8 +536,6 @@ void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitDa
     {
 		case 1:material(payload, hitData, sceneData, imageArray, sampler);break;
 		case 2:shadow(payload, hitData, sceneData, imageArray, sampler);break;
-
-        default: printf("Error: No hit shader found.");
     }
 }
 
@@ -534,8 +547,6 @@ void callMiss(int missIndex, struct Payload* payload,
     {
 		case 3:environment(payload, sceneData, imageArray, sampler);break;
 		case 4:shadowMiss(payload, sceneData, imageArray, sampler);break;
-
-        default: printf("Error: No miss shader found.");
     }
 }
 

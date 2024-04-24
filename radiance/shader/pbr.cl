@@ -22,6 +22,21 @@ float G_SchlicksmithGGX(float dotNL, float dotNV, float roughness)
 	return GL * GV;
 }
 
+// Disney Geometric Shadowing function ----------------------------------
+float G1_GGX_Schlick(float NdotV, float roughness) {
+  //float r = roughness; // original
+  float r = 0.5 + 0.5 * roughness; // Disney remapping
+  float k = (r * r) / 2.0;
+  float denom = NdotV * (1.0 - k) + k;
+  return NdotV / denom;
+}
+
+float G_Smith_Disney(float NoL, float NoV, float roughness) {
+  float g1_l = G1_GGX_Schlick(NoL, roughness);
+  float g1_v = G1_GGX_Schlick(NoV, roughness);
+  return g1_l * g1_v;
+}
+
 // Fresnel function ----------------------------------------------------
 float3 F_Schlick(float cosTheta, float metallic, float3 albedo)
 {
@@ -129,7 +144,7 @@ float3 sampleMicrofacetBRDF(
 		float NoV = clamp(dot(N, V), 0.0f, 1.0f);
 		float NoL = clamp(dot(N, L), 0.0f, 1.0f);
 		float NoH = clamp(dot(N, H.xyz), 0.0f, 1.0f);
-		float VoH = clamp(dot(V, H.xyz), 0.0f, 1.0f);     
+		float VoH = clamp(dot(V, H.xyz), 0.0f, 1.0f);
 
 		// specular microfacet (cook-torrance) BRDF
         float rroughness = max(0.05f, roughness);
