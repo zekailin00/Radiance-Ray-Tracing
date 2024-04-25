@@ -121,13 +121,14 @@ float3 sampleMicrofacetBRDF(
     float3 baseColor, float metallicness, float roughness,
     float3 random, float3* nextFactor) 
 {
+    // https://ameye.dev/notes/sampling-the-hemisphere/
 	if(random.z > 0.5)
 	{
 		// diffuse case
 
 		// important sampling diffuse
 		// pdf = cos(theta) * sin(theta) / PI
-		float theta = asin(sqrt(random.y));
+		float theta = acos(sqrt(random.y));
 		float phi = 2.0 * PI * random.x;
 		// sampled indirect diffuse direction in normal space
 		float4 localDiffuseDir = {sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta), 0.0f};
@@ -148,7 +149,7 @@ float3 sampleMicrofacetBRDF(
 		*nextFactor *= 2.0f; // compensate for splitting diffuse and specular
 		return L.xyz;
 	}
-	else
+	else // https://schuttejoe.github.io/post/ggximportancesamplingpart1/
 	{
 		// specular case
 		

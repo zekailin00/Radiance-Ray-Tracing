@@ -230,7 +230,7 @@ __kernel void raygen(
         // color = uncharted2_filmic(color);
 
         // Gamma correct
-        // color = pow(color, 0.4545f);
+        color = pow(color, 0.7f);
     }
 
     image[CHANNEL * index + 0] = (int)(color[0] * 255);
@@ -476,8 +476,39 @@ void material(struct Payload* payload, struct HitData* hitData,
     {   // Frensel reflection
         float3 H = normalize(V + L);
         float dotVH = clamp(dot(V, H), 0.0f, 1.0f);
-        float3 F = F_Schlick(dotVH, metallicFrag, albedoFrag);
-        payload->color = F;
+        payload->color = F_Schlick(dotVH, metallicFrag, albedoFrag);
+    }
+    else if (sceneData->debug == 13)
+    {
+        float3 H = normalize(V + L);
+        float dotNH = clamp(dot(N, H), 0.0f, 1.0f);
+
+        float D = D_GGX(dotNH, roughnessFrag);
+        payload->color = clamp(D, 0.0f, 1.0f);
+    }
+    else if (sceneData->debug == 14)
+    {
+        float dotNV = clamp(dot(N, V), 0.0f, 1.0f);
+        float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
+
+        float G = G_Smith_Disney(dotNL, dotNV, roughnessFrag);
+        payload->color = G;
+    }
+    else if (sceneData->debug == 15)
+    {
+        float dotNV = clamp(dot(N, V), 0.0f, 1.0f);
+        float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
+
+        float G = G_SchlicksmithGGX(dotNL, dotNV, roughnessFrag);
+        payload->color = G;
+    }
+    else if (sceneData->debug == 16)
+    {
+        float dotNV = clamp(dot(N, V), 0.0f, 1.0f);
+        float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
+
+        float G = G_SmithGGXCorrelated(dotNL, dotNV, roughnessFrag);
+        payload->color = G / (G + 1.0f);
     }
 
     // // [debug] custom inst index viz
