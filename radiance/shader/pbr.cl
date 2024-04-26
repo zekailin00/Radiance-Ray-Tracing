@@ -38,6 +38,62 @@ float3 F_Schlick(float cosTheta, float metallic, float3 albedo)
 
 ////////////////// Not Used ////////////////////
 
+inline float Cos2Theta(float3 w) {
+    return w.z * w.z;
+}
+
+inline float Sin2Theta(float3 w) {
+    return fmax(0.0f, 1.0f - Cos2Theta(w));
+}
+inline float SinTheta(float3 w) {
+    return sqrt(Sin2Theta(w));
+}
+
+inline float CosPhi(float3 w) {
+    float sinTheta = SinTheta(w);
+    return (sinTheta == 0.0f) ? 1.0f : clamp(w.x / sinTheta, -1.0f, 1.0f);
+}
+
+inline float SinPhi(float3 w) {
+    float sinTheta = SinTheta(w);
+    return (sinTheta == 0.0f) ? 0.0f : clamp(w.y / sinTheta, -1.0f, 1.0f);
+}
+
+inline float Tan2Theta(float3 w) {
+    return Sin2Theta(w) / Cos2Theta(w);
+}
+
+float Lambda(float3 w, float a)
+{
+    float tan2Theta = Tan2Theta(w);
+    if (isinf(tan2Theta))
+        return 0.0f;
+    float alpha2 = (CosPhi(w) * a) * (CosPhi(w) * a) + (SinPhi(w) * a) * (SinPhi(w) * a);
+    return (sqrt(1.0f + alpha2 * tan2Theta) - 1.0f) / 2.0f;
+}
+
+// https://www.pbr-book.org/4ed/Reflection_Models/Roughness_Using_Microfacet_Theory#
+float G_pbrt(float3 wo, float3 wi, float3 N, float roughness)
+{
+    mat4x4 mat, matInv;
+    float4 localIn, localOut;
+    float4 globalIn, globalOut;
+
+    globalIn.xyz = wi;
+    globalIn.w = 0.0f;
+    globalOut.xyz = wo;
+    globalOut.w = 0.0f;
+
+    GetNormalSpace(N, &mat);
+    InverseMat4x4(&mat, &matInv);
+    MultiplyMat4Vec4(&matInv, &globalOut, &localOut);
+    MultiplyMat4Vec4(&matInv, &globalIn, &localIn);
+
+    if (localIn.z < 0 || localOut.z < 0)
+        return 0.0f;
+
+    return 1 / (1 + Lambda(localIn.xyz, roughness) + Lambda(localOut.xyz, roughness));
+}
 
 // Geometric Shadowing function --------------------------------------
 float G_SchlicksmithGGX(float dotNL, float dotNV, float roughness)
@@ -100,7 +156,8 @@ float3 BRDF(float3 L, float3 V, float3 N, float metallic, float roughness, float
 
 	float3 color = {0.0f, 0.0f, 0.0f};
     float  D = D_GGX(dotNH, roughness); 
-    float  G = G_Smith_Disney(dotNL, dotNV, roughness);
+    // float  G = G_Smith_Disney(dotNL, dotNV, roughness);
+    float G = G_pbrt(V, L, N, roughness);
     float3 F = F_Schlick(dotVH, metallic, albedo);
 
     float3 c_diff = albedo * (1.0f - metallic);
@@ -176,8 +233,8 @@ float3 sampleMicrofacetBRDF(
         roughness = max(0.05f, roughness);
 
 		float  D = D_GGX(NoH, roughness);
-		// float  G = G_SmithGGXCorrelated(NoL, NoV, roughness*roughness);
-        float  G = G_Smith_Disney(NoL, NoV, roughness);
+        // float  G = G_Smith_Disney(NoL, NoV, roughness);
+        float G = G_pbrt(V, L, N, roughness);
         float3 F = F_Schlick(VoH, metallicness, baseColor);
 
 		*nextFactor = F * G * VoH / max((NoH * NoV), 0.001f);
