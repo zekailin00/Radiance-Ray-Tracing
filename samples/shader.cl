@@ -239,45 +239,103 @@ __kernel void raygen(
     image[CHANNEL * index + 3] = 255;
 }
 
-void material(struct Payload* payload, struct HitData* hitData,
-    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
+
+inline uint3 getIndices(struct SceneData* sceneData, struct HitData* hitData)
 {
-    payload->hit = true;
-
-    float* vertexData = sceneData->vertexData;
-    uint* indexData = sceneData->indexData;
-    float* normalData = sceneData->normalData;
-    float* uvData = sceneData->uvData;
     struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
-    //FIXME: instID is not meshIdx
-
-    int vo = meshInfo->vertexOffset;
     int io = meshInfo->indexOffset;
-    int uo = meshInfo->uvOffset;
-    int no = meshInfo->normalOffset;
+    uint* indexData = sceneData->indexData;
 
     uint i0 = indexData[io + hitData->primitiveIndex * 3 + 0];
     uint i1 = indexData[io + hitData->primitiveIndex * 3 + 1];
     uint i2 = indexData[io + hitData->primitiveIndex * 3 + 2];
 
-    float3 v0 = {vertexData[vo + i0 * 3 + 0], vertexData[vo + i0 * 3 + 1], vertexData[vo + i0 * 3 + 2]};
-    float3 v1 = {vertexData[vo + i1 * 3 + 0], vertexData[vo + i1 * 3 + 1], vertexData[vo + i1 * 3 + 2]};
-    float3 v2 = {vertexData[vo + i2 * 3 + 0], vertexData[vo + i2 * 3 + 1], vertexData[vo + i2 * 3 + 2]};
+    uint3 indices = {i0, i1, i2};
+    return indices;
+}
 
-    float2 uv0 = {uvData[uo + i0 * 3 + 0], uvData[uo + i0 * 3 + 1]};
-    float2 uv1 = {uvData[uo + i1 * 3 + 0], uvData[uo + i1 * 3 + 1]};
-    float2 uv2 = {uvData[uo + i2 * 3 + 0], uvData[uo + i2 * 3 + 1]};
+inline float2 getUV(struct SceneData* sceneData, struct HitData* hitData)
+{
+    struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
+    int uo = meshInfo->uvOffset;
+    float* uvData = sceneData->uvData;
+    uint3 i = getIndices(sceneData, hitData);
+
+    float2 uv0 = {uvData[uo + i.x * 3 + 0], uvData[uo + i.x * 3 + 1]};
+    float2 uv1 = {uvData[uo + i.y * 3 + 0], uvData[uo + i.y * 3 + 1]};
+    float2 uv2 = {uvData[uo + i.z * 3 + 0], uvData[uo + i.z * 3 + 1]};
     float2 uv  = hitData->barycentric.x * uv0 +
                  hitData->barycentric.y * uv1 + 
                  hitData->barycentric.z * uv2;
+    return uv;
+}
 
+inline float3 getFaceNormal(struct SceneData* sceneData, struct HitData* hitData)
+{
+    struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
+    int no = meshInfo->normalOffset;
+    float* normalData = sceneData->normalData;
+    uint3 i = getIndices(sceneData, hitData);
+
+    float3 N;
+    {
+        float4 n0 = {
+            normalData[no + i.x * 3 + 0],
+            normalData[no + i.x * 3 + 1],
+            normalData[no + i.x * 3 + 2], 0.0f};
+        float4 n1 = {
+            normalData[no + i.y * 3 + 0],
+            normalData[no + i.y * 3 + 1],
+            normalData[no + i.y * 3 + 2], 0.0f};
+        float4 n2 = {
+            normalData[no + i.z * 3 + 0],
+            normalData[no + i.z * 3 + 1],
+            normalData[no + i.z * 3 + 2], 0.0f};
+        float4 normal = hitData->barycentric.x * n0 +
+                        hitData->barycentric.y * n1 + 
+                        hitData->barycentric.z * n2;
+        float4 tmp;
+        MultiplyMat4Vec4(&hitData->transform, &normal, &tmp);
+        N = normalize(tmp.xyz);
+    }
+    return N;
+}
+
+inline float3 getMatNormal(struct SceneData* sceneData, struct HitData* hitData,
+    image2d_array_t imageArray, sampler_t sampler, float3 faceNormal)
+{
+    struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
     struct Material* material = &sceneData->materials[meshInfo->materialIndex];
 
-    // printf("offsets: <%d, %d, %d, %d>\n"
-    //        "Mat indices: <%d, %d, %d, %d>\n",
-    //        vo, io, uo, no, 
-    //        meshInfo->materialIndex, material->metallicTexIdx, 
-    //        material->roughnessTexIdx, material->albedoTexIdx );
+    if (material->normalTexIdx != -1)
+    {
+        float2 uv = getUV(sceneData, hitData);
+        float4 coord = {uv.x, 1.0f - uv.y, (float)material->normalTexIdx, 0.0f};
+        uint4 tex = read_imageui(imageArray, sampler, coord);
+        float4 localNormal = {
+            clamp(tex.x / 255.0f, 0.0f, 1.0f),
+            clamp(tex.y / 255.0f, 0.0f, 1.0f),
+            clamp(tex.z / 255.0f, 0.0f, 1.0f),
+            0.0f
+        };
+        localNormal = normalize(localNormal * 2.0f - 1.0f);
+        mat4x4 transform;
+        GetNormalSpace(faceNormal, &transform);
+        float4 globalNormal;
+        MultiplyMat4Vec4(&transform, &localNormal, &globalNormal);
+        faceNormal = normalize(globalNormal.xyz);
+    }
+
+    return faceNormal;
+}
+
+// float4: {metallicFrag, roughnessFrag, transmissionFrag, iorFrag}
+inline float4 getMaterialProp(struct SceneData* sceneData, struct HitData* hitData,
+    image2d_array_t imageArray, sampler_t sampler)
+{
+    struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
+    struct Material* material = &sceneData->materials[meshInfo->materialIndex];
+    float2 uv = getUV(sceneData, hitData);
 
     float metallicFrag;
     if (material->metallicTexIdx == -1)
@@ -296,8 +354,19 @@ void material(struct Payload* payload, struct HitData* hitData,
     {
         float4 coord = {uv.x, 1.0f - uv.y, (float)material->roughnessTexIdx, 0.0f};
         uint4 tex = read_imageui(imageArray, sampler, coord);
-        roughnessFrag = clamp(tex.y / 255.0f, 0.0f, 1.0f);
+        roughnessFrag = clamp(tex.y / 255.0f, 0.05f, 1.0f);
     }
+
+    float4 matProp = {metallicFrag, roughnessFrag, 0.0f, 0.0f};
+    return matProp;
+}
+
+inline float3 getAlbedo(struct SceneData* sceneData, struct HitData* hitData,
+    image2d_array_t imageArray, sampler_t sampler)
+{
+    struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
+    struct Material* material = &sceneData->materials[meshInfo->materialIndex];
+    float2 uv = getUV(sceneData, hitData);
 
     float3 albedoFrag;
     if (material->albedoTexIdx == -1)
@@ -310,72 +379,75 @@ void material(struct Payload* payload, struct HitData* hitData,
         albedoFrag.y = clamp(tex.y / 255.0f, 0.0f, 1.0f);
         albedoFrag.z = clamp(tex.z / 255.0f, 0.0f, 1.0f);
     }
+    return albedoFrag;
+}
 
-    float3 N; {
-        float4 n0 = {normalData[no + i0 * 3 + 0], normalData[no + i0 * 3 + 1], normalData[no + i0 * 3 + 2], 0.0f};
-        float4 n1 = {normalData[no + i1 * 3 + 0], normalData[no + i1 * 3 + 1], normalData[no + i1 * 3 + 2], 0.0f};
-        float4 n2 = {normalData[no + i2 * 3 + 0], normalData[no + i2 * 3 + 1], normalData[no + i2 * 3 + 2], 0.0f};
-        float4 normal = hitData->barycentric.x * n0 +
-                        hitData->barycentric.y * n1 + 
-                        hitData->barycentric.z * n2;
-        float4 tmp;
-        MultiplyMat4Vec4(&hitData->transform, &normal, &tmp);
-        N = normalize(tmp.xyz);
-    }
-
-    if (material->normalTexIdx != -1)
+inline float3 getHitPosition(struct HitData* hitData, float3 N)
+{
+    // Get global hit position
+    float3 hitPos;
     {
-        float4 coord = {uv.x, 1.0f - uv.y, (float)material->normalTexIdx, 0.0f};
-        uint4 tex = read_imageui(imageArray, sampler, coord);
-        float4 localNormal = {
-            clamp(tex.x / 255.0f, 0.0f, 1.0f),
-            clamp(tex.y / 255.0f, 0.0f, 1.0f),
-            clamp(tex.z / 255.0f, 0.0f, 1.0f),
-            0.0f
+        float4 tmp0;
+        float4 tmp1 = {
+            hitData->hitPoint.x,
+            hitData->hitPoint.y,
+            hitData->hitPoint.z, 1.0f
         };
-        localNormal = normalize(localNormal * 2.0f - 1.0f);
-        mat4x4 transform;
-        GetNormalSpace(N, &transform);
-        float4 globalNormal;
-        MultiplyMat4Vec4(&transform, &localNormal, &globalNormal);
-        N = normalize(globalNormal.xyz);
-    }
-
-    struct SceneProperties* scene = sceneData->scene;
-
-    float3 hitPos; { // Get global hit position
-        float4 tmp0, tmp1 = {hitData->hitPoint.x, hitData->hitPoint.y, hitData->hitPoint.z, 1.0f};
         MultiplyMat4Vec4(&hitData->transform, &tmp1, &tmp0);
         hitPos = tmp0.xyz + N * 0.0001f;
     }
+    return hitPos;
+}
+
+inline float3 getLightDirection(struct SceneData* sceneData)
+{
+    struct SceneProperties* scene = sceneData->scene;
+    float3 L = normalize(-scene->lights[0].direction.xyz);
+    return L;
+}
+
+inline float3 getViewDirection(struct SceneData* sceneData, float3 hitPos)
+{
     float3 viewPos = {
         sceneData->camData->x,
         sceneData->camData->y,
         sceneData->camData->z
     };
     float3 V = normalize(viewPos - hitPos);
-    float3 L = normalize(-scene->lights[0].direction.xyz);
+    return V;
+}
+
+void material(struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
+{
+    payload->hit = true;
+
+    float3 faceN = getFaceNormal(sceneData, hitData);
+    float3 hitPos = getHitPosition(hitData, faceN);
+    
+    float3 N = getMatNormal(sceneData, hitData, imageArray, sampler, faceN);
+    float3 L = getLightDirection(sceneData);
+    float3 V = getViewDirection(sceneData, hitPos);
+
+    // float4 mat <x,y,z,w> := <metallic, roughness, transmission, ior>
+    float4 mat = getMaterialProp(sceneData, hitData, imageArray, sampler);
+    float3 albedo = getAlbedo(sceneData, hitData, imageArray, sampler);
 
     // Shadow test 
     struct Payload shadowPayload;
-    traceRay(sceneData->topLevel, 2, 4, hitPos, L, 0.01, 1000, &shadowPayload,
-        sceneData, imageArray, sampler);
+    traceRay(sceneData->topLevel, 2, 4, hitPos, L, 0.01, 1000,
+        &shadowPayload, sceneData, imageArray, sampler);
 
     float3 color = {0.0f, 0.0f, 0.0f};
-    if (!shadowPayload.hit)
+    if (!shadowPayload.hit) // TODO: support multiple lights
     {
-        // Specular contribution
-        float3 Lo = {0.0f, 0.0f, 0.0f};
-
-        // TODO: support multiple lights
-        float3 lightColor = scene->lights[0].color.rgb;
-        Lo += BRDF(L, V, N, metallicFrag, roughnessFrag, albedoFrag) * lightColor;
-
-        color += Lo;
+        struct SceneProperties* scene = sceneData->scene;
+        float3 radiance = scene->lights[0].color.rgb; // dot is included in brdf
+        color += BRDF(L, V, N, mat.x, mat.y, albedo) * radiance;
     }
 
     // Combine with ambient
-    color += albedoFrag * 0.1f;
+    color += albedo * 0.1f;
 
     payload->color[0] = color.x;
     payload->color[1] = color.y;
@@ -394,9 +466,8 @@ void material(struct Payload* payload, struct HitData* hitData,
     
     // sample indirect direction
     float3 nextFactor = {0.0f, 0.0f, 0.0f};
-    float3 nextDir = sampleMicrofacetBRDF(V, N, 
-        albedoFrag, metallicFrag, roughnessFrag,
-        random, &nextFactor);
+    float3 nextDir = sampleMicrofacetBRDF(V, N,
+        albedo, mat.x, mat.y, random, &nextFactor);
 
     // indirect ray
     payload->nextRayOrigin = hitPos;
@@ -406,115 +477,6 @@ void material(struct Payload* payload, struct HitData* hitData,
     ////////////////////////////////////////
     //      Global illumination End       //
     ////////////////////////////////////////
-
-    if (sceneData->debug == 1)
-    {
-        // [debug] normal viz
-        // R:x, G:y, B:z = [0.0, 0.1]
-        //      +y        in:  -z
-        //  +x      -x
-        //      -y        out: +z
-        payload->color = N / 2.0f + 0.5f;
-    }
-    else if (sceneData->debug == 2)
-    {
-        payload->color = L / 2.0f + 0.5f;
-    }
-    else if (sceneData->debug == 3)
-    {
-        payload->color = V / 2.0f + 0.5f;
-    }
-    else if (sceneData->debug == 4)
-    {
-        payload->color = dot(N, L) / 2.0f + 0.5f;
-    }
-    else if (sceneData->debug == 5)
-    {
-        float3 a = BRDF(L, V, N, metallicFrag, roughnessFrag, albedoFrag);
-        payload->color = (a) / ((a) + 1.0f);
-    }
-    else if (sceneData->debug == 6)
-    {
-        // Shadow test: white color if no occlusion
-        struct Payload shadowPayload;
-        traceRay(sceneData->topLevel, 2, 4, hitPos, L, 0.01, 1000, &shadowPayload,
-            sceneData, imageArray, sampler);
-        payload->color = shadowPayload.color;
-    }
-    else if (sceneData->debug == 7)
-    {
-        payload->color.x = hitData->barycentric.x;
-        payload->color.y = hitData->barycentric.y;
-        payload->color.z = hitData->barycentric.z;
-    }
-    else if (sceneData->debug == 8)
-    {
-        payload->color = albedoFrag;
-    }
-    else if (sceneData->debug == 9)
-    {
-        payload->color.x = metallicFrag;
-        payload->color.y = metallicFrag;
-        payload->color.z = metallicFrag;
-    }
-    else if (sceneData->debug == 10)
-    {
-        payload->color.x = roughnessFrag;
-        payload->color.y = roughnessFrag;
-        payload->color.z = roughnessFrag;
-    }
-    else if (sceneData->debug == 11)
-    {   // Diffuse component
-        float3 H = normalize(V + L);
-        float dotVH = clamp(dot(V, H), 0.0f, 1.0f);
-        float3 F = F_Schlick(dotVH, metallicFrag, albedoFrag);
-        float3 c_diff = albedoFrag * (1.0f - metallicFrag);
-        float3 f_diffuse  = (1 - F) * (1 / 3.1415f) * c_diff;
-        payload->color = f_diffuse;
-    }
-    else if (sceneData->debug == 12)
-    {   // Frensel reflection
-        float3 H = normalize(V + L);
-        float dotVH = clamp(dot(V, H), 0.0f, 1.0f);
-        payload->color = F_Schlick(dotVH, metallicFrag, albedoFrag);
-    }
-    else if (sceneData->debug == 13)
-    {
-        float3 H = normalize(V + L);
-        float dotNH = clamp(dot(N, H), 0.0f, 1.0f);
-
-        float D = D_GGX(dotNH, roughnessFrag);
-        payload->color = clamp(D, 0.0f, 1.0f);
-    }
-    else if (sceneData->debug == 14)
-    {
-        float dotNV = clamp(dot(N, V), 0.0f, 1.0f);
-        float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
-
-        float G = G_Smith_Disney(dotNL, dotNV, roughnessFrag);
-        payload->color = G;
-    }
-    else if (sceneData->debug == 15)
-    {
-        float dotNV = clamp(dot(N, V), 0.0f, 1.0f);
-        float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
-
-        float G = G_SchlicksmithGGX(dotNL, dotNV, roughnessFrag);
-        payload->color = G;
-    }
-    else if (sceneData->debug == 16)
-    {
-        float dotNV = clamp(dot(N, V), 0.0f, 1.0f);
-        float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
-
-        float G = G_SmithGGXCorrelated(dotNL, dotNV, roughnessFrag);
-        payload->color = G / (G + 1.0f);
-    }
-
-    // // [debug] custom inst index viz
-    // payload->color[0] = (uchar)hitData->instanceCustomIndex;
-    // payload->color[1] = (uchar)hitData->instanceCustomIndex;
-    // payload->color[2] = (uchar)hitData->instanceCustomIndex;
 }
 
 void shadowMiss(struct Payload* payload,
@@ -581,3 +543,111 @@ void callMiss(int missIndex, struct Payload* payload,
     }
 }
 
+//    if (sceneData->debug == 1)
+//     {
+//         // [debug] normal viz
+//         // R:x, G:y, B:z = [0.0, 0.1]
+//         //      +y        in:  -z
+//         //  +x      -x
+//         //      -y        out: +z
+//         payload->color = N / 2.0f + 0.5f;
+//     }
+//     else if (sceneData->debug == 2)
+//     {
+//         payload->color = L / 2.0f + 0.5f;
+//     }
+//     else if (sceneData->debug == 3)
+//     {
+//         payload->color = V / 2.0f + 0.5f;
+//     }
+//     else if (sceneData->debug == 4)
+//     {
+//         payload->color = dot(N, L) / 2.0f + 0.5f;
+//     }
+//     else if (sceneData->debug == 5)
+//     {
+//         float3 a = BRDF(L, V, N, metallicFrag, roughnessFrag, albedoFrag);
+//         payload->color = (a) / ((a) + 1.0f);
+//     }
+//     else if (sceneData->debug == 6)
+//     {
+//         // Shadow test: white color if no occlusion
+//         struct Payload shadowPayload;
+//         traceRay(sceneData->topLevel, 2, 4, hitPos, L, 0.01, 1000, &shadowPayload,
+//             sceneData, imageArray, sampler);
+//         payload->color = shadowPayload.color;
+//     }
+//     else if (sceneData->debug == 7)
+//     {
+//         payload->color.x = hitData->barycentric.x;
+//         payload->color.y = hitData->barycentric.y;
+//         payload->color.z = hitData->barycentric.z;
+//     }
+//     else if (sceneData->debug == 8)
+//     {
+//         payload->color = albedoFrag;
+//     }
+//     else if (sceneData->debug == 9)
+//     {
+//         payload->color.x = metallicFrag;
+//         payload->color.y = metallicFrag;
+//         payload->color.z = metallicFrag;
+//     }
+//     else if (sceneData->debug == 10)
+//     {
+//         payload->color.x = roughnessFrag;
+//         payload->color.y = roughnessFrag;
+//         payload->color.z = roughnessFrag;
+//     }
+//     else if (sceneData->debug == 11)
+//     {   // Diffuse component
+//         float3 H = normalize(V + L);
+//         float dotVH = clamp(dot(V, H), 0.0f, 1.0f);
+//         float3 F = F_Schlick(dotVH, metallicFrag, albedoFrag);
+//         float3 c_diff = albedoFrag * (1.0f - metallicFrag);
+//         float3 f_diffuse  = (1 - F) * (1 / 3.1415f) * c_diff;
+//         payload->color = f_diffuse;
+//     }
+//     else if (sceneData->debug == 12)
+//     {   // Frensel reflection
+//         float3 H = normalize(V + L);
+//         float dotVH = clamp(dot(V, H), 0.0f, 1.0f);
+//         payload->color = F_Schlick(dotVH, metallicFrag, albedoFrag);
+//     }
+//     else if (sceneData->debug == 13)
+//     {
+//         float3 H = normalize(V + L);
+//         float dotNH = clamp(dot(N, H), 0.0f, 1.0f);
+
+//         float D = D_GGX(dotNH, roughnessFrag);
+//         payload->color = clamp(D, 0.0f, 1.0f);
+//     }
+//     else if (sceneData->debug == 14)
+//     {
+//         float dotNV = clamp(dot(N, V), 0.0f, 1.0f);
+//         float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
+
+//         float G = G_Smith_Disney(dotNL, dotNV, roughnessFrag);
+//         payload->color = G;
+//     }
+//     else if (sceneData->debug == 15)
+//     {
+//         float dotNV = clamp(dot(N, V), 0.0f, 1.0f);
+//         float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
+
+//         float G = G_SchlicksmithGGX(dotNL, dotNV, roughnessFrag);
+//         payload->color = G;
+//     }
+//     else if (sceneData->debug == 16)
+//     {
+//         float dotNV = clamp(dot(N, V), 0.0f, 1.0f);
+//         float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
+
+//         float G = G_SmithGGXCorrelated(dotNL, dotNV, roughnessFrag);
+//         payload->color = (1.0f / (G)) / (1.0f / (G) + 1);
+//     }
+//     else if (sceneData->debug == 17)
+//     {
+//         float G = G_pbrt(V, L, N, roughnessFrag);
+//         payload->color = G;
+//     }
