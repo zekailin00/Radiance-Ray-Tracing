@@ -168,9 +168,18 @@ float3 BRDF(float3 L, float3 V, float3 N, float metallic, float roughness, float
 	return color;
 }
 
-float3 Reflect(float3 in, float3 N)
+float3 reflect(float3 in, float3 N)
 {
     return -in + 2 * dot(in, N) * N;
+}
+
+float3 refract(float3 V, float3 H, float eta)
+{
+    float cosTheta_i = dot(H, V);
+    float sin2Theta_i = max(0.0f, 1.0f - (cosTheta_i * cosTheta_i));
+    float sin2Theta_t = sin2Theta_i / (eta * eta);
+    float cosTheta_t = sqrt(1.0f - sin2Theta_t);
+    return -V / eta + (cosTheta_i / eta - cosTheta_t) * H;
 }
 
 float3 sampleMicrofacetBRDF(
@@ -199,10 +208,9 @@ float3 sampleMicrofacetBRDF(
 		float3 F = F_Schlick(dotVH, metallicness, baseColor);
 
         // dielectric diffuse(no transmission) reflectance;
-        float3 reflectance = (baseColor /*TODO:/ PI?*/) * (1.0f - metallicness);
+        float3 reflectance = (baseColor) * (1.0f - metallicness);
         float3 f_diffuse  = reflectance * (1 - F); // brdf of diffuse
         *nextFactor = f_diffuse;
-        // *nextFactor *= (2.0f * PI); // TODO: check brdf sampling probability
 		*nextFactor *= 2.0f; // compensate for splitting diffuse and specular
 		return L.xyz;
 	}
@@ -221,7 +229,7 @@ float3 sampleMicrofacetBRDF(
         GetNormalSpace(N, &mat);
         MultiplyMat4Vec4(&mat, &localH, &H);
 
-		float3 L = Reflect(V, H.xyz); //FIXME: negative??
+		float3 L = reflect(V, H.xyz);
 
 		// all required dot products
 		float NoV = clamp(dot(N, V), 0.0f, 1.0f);
@@ -243,14 +251,133 @@ float3 sampleMicrofacetBRDF(
 	}
 }
 
+float3 microfacetBRDF(float3 L, float3 V, float3 N, float3 albedo,
+    float metallicness, float roughness, float transmission, float ior)
+{
+    float3 H = normalize(V + L); // half vector
+
+    // all required dot products
+    float NoV = clamp(dot(N, V), 0.0f, 1.0f);
+    float NoL = clamp(dot(N, L), 0.0f, 1.0f);
+    float NoH = clamp(dot(N, H), 0.0f, 1.0f);
+    float VoH = clamp(dot(V, H), 0.0f, 1.0f);     
+
+    float3 F = F_Schlick(VoH, metallicness, albedo);
+    float  D = D_GGX(NoH, roughness); 
+    float  G = G_pbrt(V, L, N, roughness);
+
+    float3 f_specular = (D * G * F) / max(4.0f * NoV * NoL, 0.001f);
+    float3 notSpec = (1.0f - F) * (1.0f - metallicness) * (1.0f - transmission);
+    float3 f_diffuse = notSpec * (albedo / PI);
+    return (f_diffuse + f_specular) * NoL;
+}
+
+float3 sampleMicrofacetBRDF_transm(float3 V, float3 N, float3 baseColor,
+    float metallicness, float roughness, float transmission, float ior,
+    float3 random, float3* nextFactor)
+{
+    if(random.z < 0.5f)
+    {   // non-specular light
+        if((2.0f * random.z) < transmission)
+        {
+            // transmitted light
+            float3 forwardNormal = N;
+            float frontFacing = dot(V, N);
+            float eta = ior;
+            if(frontFacing < 0.0f) {
+                forwardNormal = -N;
+                eta = 1.0f / ior;
+            }
+            
+            float a = roughness * roughness;
+            float theta = acos(sqrt((1.0f - random.y) / (1.0f + (a * a - 1.0f) * random.y)));
+            float phi = 2.0 * PI * random.x;
+
+            float4 localH = {sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta), 0.0f};
+            mat4x4 mat; float4 tmp;
+            GetNormalSpace(forwardNormal, &mat);
+            MultiplyMat4Vec4(&mat, &localH, &tmp);
+                
+            // compute L from sampled H
+            float3 H = tmp.xyz;
+            float3 L = refract(V, H, eta);
+            
+            // all required dot products
+            float NoV = clamp(dot(forwardNormal, V), 0.0f, 1.0f);
+            float NoL = clamp(dot(forwardNormal, -L), 0.0f, 1.0f); // reverse normal
+            float NoH = clamp(dot(forwardNormal, H), 0.0f, 1.0f);
+            float VoH = clamp(dot(V, H), 0.0f, 1.0f);     
+            
+            float3 F = F_Schlick(VoH, metallicness, baseColor);
+            float  D = D_GGX(NoH, roughness);
+            float  G = G_pbrt(V, -L, forwardNormal, roughness);
+            *nextFactor = baseColor * (1.0f - F) * G * VoH / max((NoH * NoV), 0.001f);
+            
+            *nextFactor *= 2.0f; // compensate for splitting diffuse and specular
+            return L;
+        }
+        else
+        { // diffuse light
+        
+            // important sampling diffuse
+            float theta = acos(sqrt(random.y));
+            float phi = 2.0f * PI * random.x;
+            // sampled indirect diffuse direction in normal space
+            float4 localDiffuseDir = {sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta), 0.0f};
+            mat4x4 mat; float4 tmp;
+            GetNormalSpace(N, &mat);
+            MultiplyMat4Vec4(&mat, &localDiffuseDir, &tmp);
+
+            float3 L = tmp.xyz;
+            float3 H = normalize(V + L);
+            float VoH = clamp(dot(V, H), 0.0f, 1.0f);     
+            float3 F = F_Schlick(VoH, metallicness, baseColor);
+            
+            *nextFactor = (1.0f - F) * (1.0f - metallicness) * baseColor;
+            *nextFactor *= 2.0f; // compensate for splitting diffuse and specular
+            return L;
+        }
+    }
+    else
+    {// specular light
+        
+        // important sample GGX
+        float a = roughness * roughness;
+		float theta = acos(sqrt((1.0f - random.y) / (1.0f + (a * a - 1.0f) * random.y)));
+		float phi = 2.0f * PI * random.x;
+
+		float4 localH = {sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta), 0.0f};
+        mat4x4 mat; float4 tmp;
+        GetNormalSpace(N, &mat);
+        MultiplyMat4Vec4(&mat, &localH, &tmp);
+
+        float3 H = tmp.xyz;
+        float3 L = reflect(V, H);
+
+        // all required dot products
+        float NoV = clamp(dot(N, V), 0.0f, 1.0f);
+        float NoL = clamp(dot(N, L), 0.0f, 1.0f);
+        float NoH = clamp(dot(N, H), 0.0f, 1.0f);
+        float VoH = clamp(dot(V, H), 0.0f, 1.0f);     
+        
+        float  D = D_GGX(NoH, roughness);
+        float  G = G_pbrt(V, L, N, roughness);
+        float3 F = F_Schlick(VoH, metallicness, baseColor);
+
+        *nextFactor =  F * G * VoH / max((NoH * NoV), 0.001f);
+        *nextFactor *= 2.0f; // compensate for splitting diffuse and specular
+        return L;
+    }
+}
+
 struct Material
 {
     float4 albedo;
 
     float metallic;
     float roughness;
-    float _1;
-    float _2;
+    float transmission;
+    float ior;
 
     // -1 := not used
     int albedoTexIdx;

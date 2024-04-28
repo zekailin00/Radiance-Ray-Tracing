@@ -11,10 +11,12 @@
 
 // #define modelFile "/home/zekailin00/Desktop/ray-tracing/framework/assets/helmet.gltf"
 // #define modelFile "/home/zekailin00/Desktop/ray-tracing/framework/assets/c2.glb"
+// #define modelFile "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell5-mat.glb"
+#define modelFile "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell6-mat.glb"
 // #define modelFile "/home/zekailin00/Desktop/ray-tracing/framework/assets/scene-loader-test2.glb"
 // #define modelFile "/home/zekailin00/Desktop/ray-tracing/framework/assets/sample1.gltf"
 // #define modelFile "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell2.glb"
-#define modelFile "/home/zekailin00/Desktop/ray-tracing/framework/assets/sample1.glb"
+// #define modelFile "/home/zekailin00/Desktop/ray-tracing/framework/assets/sample1.glb"
 
 
 void PrintChildren(aiNode* node, int level, const aiMatrix4x4& parent);
@@ -109,6 +111,17 @@ int main(int, char**)
                 aiReturn res = mat->Get(AI_MATKEY_ROUGHNESS_FACTOR, factor);
                 if (res == aiReturn_SUCCESS) printf("\tfileRoughnessFactor: %f\n", factor);
             }
+        }
+
+        {
+            float factor = 0.0f;
+            aiReturn res = mat->Get(AI_MATKEY_TRANSMISSION_FACTOR, factor);
+            if (res == aiReturn_SUCCESS) printf("\tfileTransmissionFactor: %f\n", factor);
+        }
+        {
+            float factor = 0.0f;
+            aiReturn res = mat->Get(AI_MATKEY_REFRACTI, factor);
+            if (res == aiReturn_SUCCESS) printf("\tfileIORFactor: %f\n", factor);
         }
 
         {

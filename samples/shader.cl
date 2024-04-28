@@ -357,7 +357,10 @@ inline float4 getMaterialProp(struct SceneData* sceneData, struct HitData* hitDa
         roughnessFrag = clamp(tex.y / 255.0f, 0.05f, 1.0f);
     }
 
-    float4 matProp = {metallicFrag, roughnessFrag, 0.0f, 0.0f};
+    float transFrag = clamp(material->transmission, 0.0f, 1.0f);
+    float iorFrag = clamp(material->ior, 0.0f, 10.0f);
+
+    float4 matProp = {metallicFrag, roughnessFrag, transFrag, iorFrag};
     return matProp;
 }
 
@@ -394,7 +397,7 @@ inline float3 getHitPosition(struct HitData* hitData, float3 N)
             hitData->hitPoint.z, 1.0f
         };
         MultiplyMat4Vec4(&hitData->transform, &tmp1, &tmp0);
-        hitPos = tmp0.xyz + N * 0.0001f;
+        hitPos = tmp0.xyz + N * 0.00001f;
     }
     return hitPos;
 }
@@ -443,7 +446,7 @@ void material(struct Payload* payload, struct HitData* hitData,
     {
         struct SceneProperties* scene = sceneData->scene;
         float3 radiance = scene->lights[0].color.rgb; // dot is included in brdf
-        color += BRDF(L, V, N, mat.x, mat.y, albedo) * radiance;
+        color += microfacetBRDF(L, V, N, albedo, mat.x, mat.y, mat.z, mat.w) * radiance;
     }
 
     // Combine with ambient
@@ -460,15 +463,14 @@ void material(struct Payload* payload, struct HitData* hitData,
     // different random value for each pixel and each frame
     uint3 randInput = {sceneData->frameID, (uint)get_global_id(0), sceneData->depth};
     float3 random = random_pcg3d(randInput);
-    // printf("input: <%d, %d, %d>\nrandom: <%f, %f, %f>\n",
-    //     randInput.x, randInput.y, randInput.z,
-    //     random.x, random.y, random.z);
     
     // sample indirect direction
     float3 nextFactor = {0.0f, 0.0f, 0.0f};
-    float3 nextDir = sampleMicrofacetBRDF(V, N,
-        albedo, mat.x, mat.y, random, &nextFactor);
-
+    float3 nextDir = sampleMicrofacetBRDF_transm(V, N, albedo,
+        mat.x, mat.y, mat.z, mat.w, random, &nextFactor);
+    if (dot(nextDir, N) < 0)
+        hitPos = getHitPosition(hitData, -faceN);
+    
     // indirect ray
     payload->nextRayOrigin = hitPos;
     payload->nextRayDirection = nextDir;

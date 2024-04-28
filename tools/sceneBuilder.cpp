@@ -18,7 +18,7 @@
 #include "stb_image_write.h"
 
 
-#define TEX_DIM 2048 // Fixed dimension of textures in texture array for materials.
+#define TEX_DIM 4096 // Fixed dimension of textures in texture array for materials.
 
 
 namespace RD
@@ -163,6 +163,18 @@ Scene* Scene::Load(std::string path, RD::Platform* plt, bool loadFromCache)
                 material.roughnessTexIdx = -1;
                 material.roughness = factor;
             }
+        }
+
+        {
+            float factor = 0.0f;
+            aiReturn res = mat->Get(AI_MATKEY_TRANSMISSION_FACTOR, factor);
+            material.transmission = factor;
+        }
+
+        {
+            float factor = 1.45f;
+            aiReturn res = mat->Get(AI_MATKEY_REFRACTI, factor);
+            material.ior = factor;
         }
 
         {

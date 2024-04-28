@@ -114,8 +114,8 @@ struct Material
 
     float metallic;
     float roughness;
-    float _1;
-    float _2;
+    float transmission;
+    float ior;
 
     // -1 := not used
     int albedoTexIdx;
