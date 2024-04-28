@@ -178,8 +178,22 @@ float3 refract(float3 V, float3 H, float eta)
     float cosTheta_i = dot(H, V);
     float sin2Theta_i = max(0.0f, 1.0f - (cosTheta_i * cosTheta_i));
     float sin2Theta_t = sin2Theta_i / (eta * eta);
+
+    if ((1.0f - sin2Theta_t) < 0.0f)
+        return 0.0f;
     float cosTheta_t = sqrt(1.0f - sin2Theta_t);
     return -V / eta + (cosTheta_i / eta - cosTheta_t) * H;
+}
+
+float3 refract_glsl(float3 I, float3 N, float eta)
+{
+    float3 R;
+    float k = 1.0f - eta * eta * (1.0f - dot(N, I) * dot(N, I));
+    if (k < 0.0f)
+        R = 0.0f;
+    else
+        R = eta * I - (eta * dot(N, I) + sqrt(k)) * N;
+    return R;
 }
 
 float3 sampleMicrofacetBRDF(

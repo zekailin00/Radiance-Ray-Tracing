@@ -409,15 +409,9 @@ inline float3 getLightDirection(struct SceneData* sceneData)
     return L;
 }
 
-inline float3 getViewDirection(struct SceneData* sceneData, float3 hitPos)
+inline float3 getViewDirection(struct Payload* payload)
 {
-    float3 viewPos = {
-        sceneData->camData->x,
-        sceneData->camData->y,
-        sceneData->camData->z
-    };
-    float3 V = normalize(viewPos - hitPos);
-    return V;
+    return normalize(-payload->nextRayDirection);
 }
 
 void material(struct Payload* payload, struct HitData* hitData,
@@ -430,7 +424,7 @@ void material(struct Payload* payload, struct HitData* hitData,
     
     float3 N = getMatNormal(sceneData, hitData, imageArray, sampler, faceN);
     float3 L = getLightDirection(sceneData);
-    float3 V = getViewDirection(sceneData, hitPos);
+    float3 V = getViewDirection(payload);
 
     // float4 mat <x,y,z,w> := <metallic, roughness, transmission, ior>
     float4 mat = getMaterialProp(sceneData, hitData, imageArray, sampler);
