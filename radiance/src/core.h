@@ -148,4 +148,13 @@ struct SceneProperties
     struct DirLight lights[5];
 };
 
+struct PhysicalCamera
+{
+    float widthPixel, heightPixel;  // integer pixel count; e.g. [1920.0f, 1080.0f]
+    float focalLength, sensorWidth; // in meter; controls fov; e.g. 0.0025m = 25mm
+    float focalDistance, fStop;     // in meter, depth of view; F/N = aperture diameter
+    float x, y, z;                  // camera position in meter
+    float wx, wy, wz;               // camera rotation in degree
+};
+
 } // namespace RD

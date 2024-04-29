@@ -8,8 +8,13 @@
 #include "stb_image_write.h"
 
 #define OFF_SCREEN
-#define LOAD_CACHE true
+#define LOAD_FROM_CACHE
 
+#ifdef LOAD_FROM_CACHE
+#define LOAD_CACHE true
+#else
+#define LOAD_CACHE false
+#endif
 struct CbData
 {
     RD::Platform* plt;
@@ -37,12 +42,10 @@ int main()
     std::string modelFile =
         // "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell2.glb"; // helmet
         "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell-armor.glb"; //armor
+        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell5-mat.glb"; // mat-test
+        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell6-mat.glb"; // mat-test-tran
         // "/home/zekailin00/Desktop/ray-tracing/framework/assets/sample1.glb";
-    std::string shaderPath =
-        "/home/zekailin00/Desktop/ray-tracing/framework/samples/shader.cl";
-    unsigned int extent[2] = {4000, 4000};
-    size_t imageSize = extent[0] * extent[1] * RD_CHANNEL;
-    uint8_t* image = (uint8_t*)malloc(imageSize);
+    std::string shaderPath = "/home/zekailin00/Desktop/ray-tracing/framework/samples/shader.cl";
 
     /* Define pipeline data inputs */
     RD::RayTraceProperties RTProp = {
@@ -89,16 +92,43 @@ int main()
     //     .color = {10.0f, 10.0f, 10.0f, 1.0f}
     // };
 
+    // // material test
+    // struct Camera camData = {
+    //     .x = 0.0f,
+    //     .y = 12.0f, 
+    //     .z = -12.0f,
+    //     .focal = -1.0f,
+    //     .wx = 0.4f,
+    //     .wy = 3.14f,
+    //     .wz = -0.0f,
+    //     .exposure = 1.0f
+    // };
+    // RD::SceneProperties sceneData;
+    // sceneData.lightCount[0] = 1;
+    // sceneData.lights[0] = {
+    //     .direction = {1.0f, 1.0f, 10.0f},
+    //     .color = {10.0f, 10.0f, 10.0f, 1.0f}
+    // };
+
+
     // cornell - details
-    struct Camera camData = {
-        .x = 0.0f,
-        .y = 7.5f, 
-        .z = -8.0f,
-        .focal = -1.0f,
-        .wx = 0.4f,
-        .wy = 3.14f,
-        .wz = -0.0f,
-        .exposure = 1.0f
+    // struct Camera camData = {
+    //     .x = 0.0f,
+    //     .y = 7.5f, 
+    //     .z = -8.0f,
+    //     .focal = -1.0f,
+    //     .wx = 0.4f,
+    //     .wy = 3.14f,
+    //     .wz = -0.0f,
+    //     .exposure = 1.0f
+    // };
+
+    RD::PhysicalCamera camData = {
+        .widthPixel = 1000.0f,    .heightPixel = 1000.0f,
+        .focalLength = 0.0050f,   .sensorWidth = 0.0050f,
+        .focalDistance = 7.2f,    .fStop = 0.1f,
+        .x  = 0.0f,  .y  = 7.5f,  .z = -8.0f,
+        .wx = 0.4f,  .wy = 3.14f, .wz =  0.0f
     };
     RD::SceneProperties sceneData;
     sceneData.lightCount[0] = 1;
@@ -107,17 +137,17 @@ int main()
         .color = {10.0f, 10.0f, 10.0f, 1.0f}
     };
 
+    size_t imageSize = camData.widthPixel * camData.heightPixel * RD_CHANNEL;
+    uint8_t* image = (uint8_t*)malloc(imageSize);
+
     /* Intialize platform */
     RD::Platform* plt = RD::Platform::GetPlatform();
 
     RD::Buffer rdRTProp = RD::CreateBuffer(plt, sizeof(RD::RayTraceProperties));
     RD::WriteBuffer(plt, rdRTProp, sizeof(RD::RayTraceProperties), &RTProp);
 
-    RD::Buffer rdExtent  = RD::CreateBuffer(plt, sizeof(extent));
-    RD::WriteBuffer(plt, rdExtent, sizeof(extent), extent);
-
-    RD::Buffer rdImage   = RD::CreateImage(plt, extent[0], extent[1]);
-    RD::Buffer rdImageScratch = RD::CreateBuffer(plt, extent[0] * extent[1] * CHANNEL * sizeof(float));
+    RD::Buffer rdImage   = RD::CreateImage(plt, camData.widthPixel, camData.heightPixel);
+    RD::Buffer rdImageScratch = RD::CreateBuffer(plt, imageSize * sizeof(float));
 
     RD::Buffer rdCamData = RD::CreateBuffer(plt, sizeof(camData));
     RD::WriteBuffer(plt, rdCamData, sizeof(camData), &camData);
@@ -130,11 +160,11 @@ int main()
     /* Build and configure pipeline */
     RD::DescriptorSet descSet = RD::CreateDescriptorSet({
         rdRTProp, rdImageScratch, rdImage,
-        rdExtent, rdCamData, rdSceneData,
+        rdCamData, rdSceneData,
         INCLUDE_SCENE_DESC(scene)});
     RD::PipelineLayout layout = RD::CreatePipelineLayout({
         RD::BUFFER_TYPE, RD::BUFFER_TYPE, RD::IMAGE_TYPE,
-        RD::BUFFER_TYPE, RD::BUFFER_TYPE, RD::BUFFER_TYPE,
+        RD::BUFFER_TYPE, RD::BUFFER_TYPE,
         INCLUDE_SCENE_LAYOUT});
 
     /* Build shader module */
@@ -154,6 +184,10 @@ int main()
     RD::BindPipeline(plt, pipeline);    
     RD::BindDescriptorSet(plt, descSet);
 
+    unsigned int extent[2] = {
+        (unsigned int) camData.widthPixel,
+        (unsigned int) camData.heightPixel
+    };
     CbData data = {
         .plt = plt,
         .extent = extent,
@@ -177,6 +211,7 @@ int main()
     render((void*)&data, nullptr, nullptr, nullptr);
     stbi_write_jpg(fileName.c_str(), extent[0], extent[1], RD_CHANNEL, data.image, 100);
     printf("Writing image with extent: <%d, %d>\n", extent[0], extent[1]);
+    printf("Writing file to: %s\n", fileName.c_str());
 #else
     renderLoop(render, &data);
 #endif

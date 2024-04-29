@@ -3,9 +3,6 @@
 
 struct Payload
 {
-    int x; // horizontal pixel index
-    int y; // vertical pixel index
-
     float3 color;
     bool hit;
 
@@ -16,7 +13,7 @@ struct Payload
 
 struct SceneData
 {
-    struct Camera*             camData;
+    struct PhysicalCamera*     camData;
     struct SceneProperties*    scene;
     
     struct MeshInfo*           meshInfoData;
@@ -36,6 +33,15 @@ struct Camera
 {
     float x, y, z, focal;
     float wx, wy, wz, exposure;
+};
+
+struct PhysicalCamera
+{
+    float widthPixel, heightPixel;  // integer pixel count; e.g. [1920.0f, 1080.0f]
+    float focalLength, sensorWidth; // in meter; controls fov; e.g. 0.0025m = 25mm
+    float focalDistance, fStop;     // in meter, depth of view; F/N = aperture diameter
+    float x, y, z;                  // camera position in meter
+    float wx, wy, wz;               // camera rotation in degree
 };
 
 float3 aces_approx(float3 v)
@@ -80,12 +86,98 @@ float3 reinhard(float3 v)
     return v / (v + 1.0f);
 }
 
+inline float2 sampleUniformDisk(float2 u)
+{
+    // Map _u_ to $[-1,1]^2$ and handle degeneracy at the origin
+    float2 uOffset = 2.0f * u - 1.0f;
+    if (uOffset.x == 0.0f && uOffset.y == 0.0f)
+        return 0.0f;
+
+    // Apply concentric mapping to point
+    float theta, r;
+    if (fabs(uOffset.x) > fabs(uOffset.y)) {
+        r = uOffset.x;
+        theta = (PI / 4.0f) * (uOffset.y / uOffset.x);
+    }
+    else {
+        r = uOffset.y;
+        theta = (PI / 2.0f) - (PI / 4.0f) * (uOffset.x / uOffset.y);
+    }
+
+    float2 tmp = {cos(theta), sin(theta)};
+    return r * tmp;
+}
+
+void generateRay(const struct PhysicalCamera* cam,
+    const uint3 randomInput, float3* position, float3* direction)
+{
+    /* the unique global id of the work item for the current pixel */
+    const int index = get_global_id(0);
+
+    // Index for accessing image data
+    const int x = index % (int)cam->widthPixel; /* x-coordinate of the pixel */
+    const int y = index / (int)cam->widthPixel; /* y-coordinate of the pixel */
+
+    float3 random = random_pcg3d(randomInput);
+
+    /* convert int to float in range [-0.5, 0.5]  */
+    float fx = (((float)x + random.x)/ cam->widthPixel) - 0.5;
+    float fy = 0.5 - (((float)y + random.y) / cam->heightPixel);
+
+    float aspectRatio = cam->heightPixel / cam->widthPixel;
+    float4 pinholeDirection = {
+        fx * cam->sensorWidth, 
+        fy * cam->sensorWidth * aspectRatio,
+        -cam->focalLength, 0.0f
+    };
+    pinholeDirection = normalize(pinholeDirection);
+    float3 pinholeOrigin = {cam->x, cam->y, cam->z};
+
+    float time = cam->focalDistance / pinholeDirection.z;
+
+    // Transform camera position
+    mat4x4 rotX, rotY, rotZ;
+    float4 tmp;
+    EulerXToMat4x4(cam->wx, &rotX);
+    EulerYToMat4x4(cam->wy, &rotY);
+    EulerZToMat4x4(cam->wz, &rotZ);
+    MultiplyMat4Vec4(&rotZ, &pinholeDirection, &tmp);
+    MultiplyMat4Vec4(&rotY, &tmp, &pinholeDirection);
+    MultiplyMat4Vec4(&rotX, &pinholeDirection, &tmp);
+    pinholeDirection = normalize(tmp);
+
+    // return if camera is a pinhole camera
+    if (cam->fStop == 0.0f) {
+        *position = pinholeOrigin;
+        *direction = pinholeDirection.xyz;
+        return;
+    }
+
+    // Sample point on lens
+    float lensRadius = (cam->focalLength / cam->fStop) / 2.0f;
+    float2 lensPos = lensRadius * sampleUniformDisk(random.yz);
+
+    // Compute point on plane of focus
+    float3 hitPoint = pinholeOrigin + pinholeDirection.xyz * time;
+
+    // Update ray for effect of lens
+    float4 lensOrigin = {lensPos.x, lensPos.y, 0.0f, 1.0f};
+    MultiplyMat4Vec4(&rotZ, &lensOrigin, &tmp);
+    MultiplyMat4Vec4(&rotY, &tmp, &lensOrigin);
+    MultiplyMat4Vec4(&rotX, &lensOrigin, &tmp);
+    lensOrigin.xyz = pinholeOrigin + tmp.xyz;
+
+    float3 lensDirection = normalize(hitPoint - lensOrigin.xyz);
+
+    *position = lensOrigin.xyz;
+    *direction = lensDirection;
+}
+
 __kernel void raygen(
     __global struct RayTraceProperties* RTProp,
     __global float*                     imageScratch,
     __global uchar*                     image /* <row major> */,
-    __global unsigned int*              extent /* <x,y> */,
-    __global struct Camera*             camData,
+    __global struct PhysicalCamera*     camData,
     __global struct SceneProperties*    scene,
 
     __global struct MeshInfo*           meshInfoData,
@@ -100,11 +192,6 @@ __kernel void raygen(
 {
     /* the unique global id of the work item for the current pixel */
     const int index = get_global_id(0);
-
-    // Index for accessing image data
-    const int x = index % (int)extent[0]; /* x-coordinate of the pixel */
-    const int y = index / (int)extent[0]; /* y-coordinate of the pixel */
-
     const int CHANNEL = 4; // RGBA color output
 
     // Begin one batch of work
@@ -114,39 +201,18 @@ __kernel void raygen(
     {
         iteration--;
 
-        // anti-alising
+        // ray generation with anti-alising
+        float3 rayOrigin, rayDirection;
         uint3 randInput = {frameID, RTProp->totalSamples, index};
-        float3 random = random_pcg3d(randInput);
-
-        /* convert int to float in range [0-1] */
-        float fx = (((float)x + random.x)/ (float)extent[0]) - 0.5;
-        float fy = 0.5 - (((float)y + random.y) / (float)extent[1]);
-
-        float f0 = camData->focal; // focal length
-        float4 dir = {fx, fy, f0, 0.0f}; /* range [-0.5, 0.5] */
-        dir = normalize(dir);
-        float3 origin = {camData->x, camData->y, camData->z};
-
-        // Transform camera position
-        mat4x4 rotX, rotY, rotZ;
-        float4 tmpDir;
-        EulerXToMat4x4(camData->wx, &rotX);
-        EulerYToMat4x4(camData->wy, &rotY);
-        EulerZToMat4x4(camData->wz, &rotZ);
-        MultiplyMat4Vec4(&rotZ, &dir, &tmpDir);
-        MultiplyMat4Vec4(&rotY, &tmpDir, &dir);
-        MultiplyMat4Vec4(&rotX, &dir, &tmpDir);
-        dir = normalize(tmpDir);
+        generateRay(camData, randInput, &rayOrigin, &rayDirection);
 
         struct Payload payload;
-        payload.x = x;
-        payload.y = y;
         payload.color[0] = 0.0f;
         payload.color[1] = 0.0f;
         payload.color[2] = 0.0f;
         payload.nextFactor = 1.0f;
-        payload.nextRayOrigin = origin;
-        payload.nextRayDirection = dir.xyz;
+        payload.nextRayOrigin = rayOrigin;
+        payload.nextRayDirection = rayDirection;
 
         struct SceneData sceneData;
         sceneData.camData       = camData;
