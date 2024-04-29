@@ -132,8 +132,7 @@ void generateRay(const struct PhysicalCamera* cam,
     };
     pinholeDirection = normalize(pinholeDirection);
     float3 pinholeOrigin = {cam->x, cam->y, cam->z};
-
-    float time = cam->focalDistance / pinholeDirection.z;
+    float time = -cam->focalDistance / pinholeDirection.z;
 
     // Transform camera position
     mat4x4 rotX, rotY, rotZ;

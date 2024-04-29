@@ -47,14 +47,6 @@ int main()
         // "/home/zekailin00/Desktop/ray-tracing/framework/assets/sample1.glb";
     std::string shaderPath = "/home/zekailin00/Desktop/ray-tracing/framework/samples/shader.cl";
 
-    /* Define pipeline data inputs */
-    RD::RayTraceProperties RTProp = {
-        .totalSamples = 0,
-        .batchSize = 10,
-        .depth = 8,
-        .debug = 0
-    };
-
     // // sample1
     // struct Camera camData = {
     //     .x =  -1.0f,
@@ -123,12 +115,20 @@ int main()
     //     .exposure = 1.0f
     // };
 
+    /* Define pipeline data inputs */
+    RD::RayTraceProperties RTProp = {
+        .totalSamples = 0,
+        .batchSize = 128,
+        .depth = 8,
+        .debug = 0
+    };
+
     RD::PhysicalCamera camData = {
-        .widthPixel = 1000.0f,    .heightPixel = 1000.0f,
-        .focalLength = 0.0050f,   .sensorWidth = 0.0050f,
-        .focalDistance = 7.2f,    .fStop = 0.1f,
-        .x  = 0.0f,  .y  = 7.5f,  .z = -8.0f,
-        .wx = 0.4f,  .wy = 3.14f, .wz =  0.0f
+        .widthPixel = 1000.0f,      .heightPixel = 1000.0f,
+        .focalLength = 0.0500f,     .sensorWidth = 0.0500f,
+        .focalDistance = 4.0f,      .fStop = 0.10f,
+        .x  = 0.00f,  .y  = 7.20f,  .z = -8.00f,
+        .wx = 0.40f,  .wy = 3.14f,  .wz =  0.00f
     };
     RD::SceneProperties sceneData;
     sceneData.lightCount[0] = 1;
