@@ -88,7 +88,7 @@ bool intersectBot(
                 float distance;
                 float3 bary;
                 if (intersectTriangle(origin, direction, face, vertexList, &intersectPoint, &distance, &bary) &&
-                    distance < hitData->distance)
+                    distance < hitData->distance && distance > Tmin && distance < Tmax)
                 {
                     hitData->distance       = distance;
                     hitData->hitPoint       = intersectPoint;
