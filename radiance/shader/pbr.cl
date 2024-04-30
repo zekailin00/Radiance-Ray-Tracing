@@ -180,7 +180,7 @@ float3 refract(float3 V, float3 H, float eta)
     float sin2Theta_t = sin2Theta_i / (eta * eta);
 
     if ((1.0f - sin2Theta_t) < 0.0f)
-        return 0.0f;
+        return (cosTheta_i * H - V) / eta;
     float cosTheta_t = sqrt(1.0f - sin2Theta_t);
     return -V / eta + (cosTheta_i / eta - cosTheta_t) * H;
 }
