@@ -10,7 +10,7 @@ namespace RD
 //https://github.com/straaljager/GPU-path-tracing-with-CUDA-tutorial-3
 
 // report progress during BVH construction
-#define PROGRESS_REPORT
+// #define PROGRESS_REPORT
 #ifdef PROGRESS_REPORT
 #define REPORT(x) x
 #define REPORTPRM(x) x,
@@ -300,7 +300,6 @@ BVHNode *CreateBVH(const std::vector<aiVector3f>& vertices, const std::vector<Tr
 	aiVector3f bottom(FLT_MAX, FLT_MAX, FLT_MAX);
 	aiVector3f top(-FLT_MAX, -FLT_MAX, -FLT_MAX);
 
-	puts("Gathering bounding box info from all triangles...");
 	// for each triangle
 	for (unsigned j = 0; j < triangles.size(); j++) {
 
@@ -333,10 +332,7 @@ BVHNode *CreateBVH(const std::vector<aiVector3f>& vertices, const std::vector<Tr
 
 	// ...and pass it to the recursive function that creates the SAH AABB BVH
 	// (Surface Area Heuristic, Axis-Aligned Bounding Boxes, Bounding Volume Hierarchy)
-	
-	std::printf("Creating Bounding Volume Hierarchy data...    "); fflush(stdout);
 	BVHNode* root = Recurse(work); // builds BVH and returns root node
-	printf("\b\b\b100%%\n");
 
 	root->_bottom = bottom; // bottom is bottom of bbox bounding all triangles in the scene
 	root->_top = top;
@@ -358,8 +354,6 @@ BVHNode *CreateBVH(const std::vector<Instance>& instances)
 	std::vector<BBoxTmp> work;
 	aiVector3f bottom(FLT_MAX, FLT_MAX, FLT_MAX);
 	aiVector3f top(-FLT_MAX, -FLT_MAX, -FLT_MAX);
-
-	puts("Gathering bounding box info from all triangles...");
 
     for (const Instance& inst: instances)
     {
@@ -416,10 +410,8 @@ BVHNode *CreateBVH(const std::vector<Instance>& instances)
 
 	// ...and pass it to the recursive function that creates the SAH AABB BVH
 	// (Surface Area Heuristic, Axis-Aligned Bounding Boxes, Bounding Volume Hierarchy)
-	
-	std::printf("Creating Bounding Volume Hierarchy data...    "); fflush(stdout);
+
 	BVHNode* root = Recurse(work); // builds BVH and returns root node
-	printf("\b\b\b100%%\n");
 
 	root->_bottom = bottom; // bottom is bottom of bbox bounding all triangles in the scene
 	root->_top = top;
@@ -589,7 +581,7 @@ void CreateDeviceBVH(BVHNode* root, const std::vector<Instance>& instList,
     {
         if (instOffsetMap.find(i.bottomAccelStruct) == instOffsetMap.end())
         {
-            printf("Building TopAS: Writing to instance offset at: %u\n", nextOffset);
+            // printf("Building TopAS: Writing to instance offset at: %u\n", nextOffset);
             instOffsetMap[i.bottomAccelStruct] = nextOffset + topASSize;
             nextOffset = nextOffset + i.bottomAccelStruct->data.size();
         }
@@ -598,6 +590,10 @@ void CreateDeviceBVH(BVHNode* root, const std::vector<Instance>& instList,
     unsigned int instIdx = 0;
 	unsigned int nodeIdx = 0;
 	PopulateCacheFriendlyBVH(&instList[0], root, instIdx, nodeIdx, instOffsetMap, deviceInstList, nodeList);
+
+    int maxDepth = 0;
+	CountDepth(root, 0, maxDepth);
+	printf("Max BVH depth is %d\n", maxDepth);
 }
 
 

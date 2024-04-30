@@ -44,7 +44,7 @@ int read_kernel_file_bin(const char* filename, uint8_t** data, size_t* size)
   if (nullptr == filename || nullptr == data || 0 == size)
       return -1;
   
-  printf("File name: %s\n", filename); fflush(stdout);
+  printf("\nReading kernel file with name: %s\n", filename); fflush(stdout);
   FILE* fp = fopen(filename, "r");
 
   if (NULL == fp) {
@@ -79,7 +79,7 @@ int read_kernel_file_str(const char* filename, char** data, size_t* size)
   if (nullptr == filename || nullptr == data || 0 == size)
       return -1;
   
-  printf("File name: %s\n", filename); fflush(stdout);
+  printf("\nReading kernel file with name: %s\n", filename); fflush(stdout);
   FILE* fp = fopen(filename, "r");
 
   if (NULL == fp) {

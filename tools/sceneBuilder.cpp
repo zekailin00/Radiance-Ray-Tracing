@@ -227,11 +227,19 @@ Scene* Scene::Load(std::string path, RD::Platform* plt, bool loadFromCache)
     }
     else
     {
+        time_t start_t, end_t;
+        double diff_t;
+        time(&start_t);
+        int totalTriangles = 0, totalVertices = 0;
+
         std::vector<RD::BottomAccelStruct> rdBotASList;
         for (int i = 0; i < scene->mNumMeshes; i++)
         {
             const aiMesh* mesh = scene->mMeshes[i];
             RD::Mesh rdMesh;
+
+            totalTriangles += mesh->mNumFaces;
+            totalVertices += mesh->mNumVertices;
 
             for (size_t i = 0; i < mesh->mNumVertices; i++)
                 rdMesh.vertexData.push_back(mesh->mVertices[i]);
@@ -252,6 +260,14 @@ Scene* Scene::Load(std::string path, RD::Platform* plt, bool loadFromCache)
         rdTopAS = RD::BuildAccelStruct(plt, rdInstanceList);
         std::string cachePath = path + ".cache";
         RD::TopAccelStructToFile(plt, rdTopAS, cachePath.c_str());
+
+        time(&end_t);
+        diff_t = difftime(end_t, start_t);
+        printf("\nBVH build report:\n");
+        printf("\tNumber of meshes: %d\n", scene->mNumMeshes);
+        printf("\tNumber of vertices: %d\n", totalVertices);
+        printf("\tNumber of triangles: %d\n", totalTriangles);
+        printf("\tBuild time cost: %f (sec)\n", diff_t);
     }
 
     RD::Scene* rdScene = new RD::Scene();

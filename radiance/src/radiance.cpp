@@ -19,6 +19,13 @@ TopAccelStruct _buildTopAccelStruct(CLContext* ctx,
 
 BottomAccelStruct BuildAccelStruct(Platform* platform, Mesh& mesh)
 {
+    printf("\nStart building bottom level BVH\n");
+    printf("\tVertex count:%ld\n", mesh.vertexData.size());
+    printf("\tTriangle count:%ld\n", mesh.indexData.size());
+    time_t start_t, end_t;
+    double diff_t;
+    time(&start_t);
+
     CLContext* ctx = platform->clContext;
     BVHNode* root = CreateBVH(mesh.vertexData, mesh.indexData);
 
@@ -29,16 +36,29 @@ BottomAccelStruct BuildAccelStruct(Platform* platform, Mesh& mesh)
     std::vector<DeviceBVHNode> nodeList;
     CreateDeviceBVH(root, mesh.indexData, deviceTrigList, nodeList);
 
+#ifdef DATA_LAYOUT_DEBUG
     printf("device face list size: %ld\n", deviceTrigList.size());
     printf("node list size: %ld\n", nodeList.size());
+#endif
 
     _buildBottomAccelStruct(ctx, nodeList, deviceTrigList,
         mesh.vertexData, accelStruct->data);
+
+    time(&end_t);
+    diff_t = difftime(end_t, start_t);
+    printf("Finish building bottom level BVH with time = %f\n", diff_t);
+
     return accelStruct;
 }
 
 TopAccelStruct BuildAccelStruct(Platform* platform, std::vector<Instance>& instances)
 {
+    printf("\nStart building top level BVH\n");
+    printf("\tInstance count: %ld\n", instances.size());
+    time_t start_t, end_t;
+    double diff_t;
+    time(&start_t);
+
     CLContext* ctx = platform->clContext;
     BVHNode* root = CreateBVH(instances);
 
@@ -47,12 +67,18 @@ TopAccelStruct BuildAccelStruct(Platform* platform, std::vector<Instance>& insta
     std::map<BottomAccelStruct, unsigned int> instOffsetList;
     CreateDeviceBVH(root, instances, deviceInstList, nodeList, instOffsetList);
 
+#ifdef DATA_LAYOUT_DEBUG
     printf("device instance list size: %ld\n", deviceInstList.size());
     printf("node list size: %ld\n", nodeList.size());
     printf("Instance offset list size: %ld\n", instOffsetList.size());
+#endif
 
     TopAccelStruct topAccelStruct = _buildTopAccelStruct(ctx,
         nodeList, deviceInstList, instances, instOffsetList);
+
+    time(&end_t);
+    diff_t = difftime(end_t, start_t);
+    printf("Finish building top level BVH with time = %f\n", diff_t);
 
     return topAccelStruct;
 }
@@ -253,7 +279,7 @@ cl_mem _buildAccelStruct(CLContext* ctx,
     unsigned int bufferSizeByte = sizeof(AccelStructHeader) +
         nodeListSize + faceRefListSize + triListSize;
 
-#ifndef NDEBUG
+#ifdef DATA_LAYOUT_DEBUG
     printf("DeviceBVHNode size: %ld\n\t %ld elements\n\t array bytes: %u\n",
         sizeof(DeviceBVHNode), nodeList.size(), nodeListSize);
     printf("Triangle size: %ld\n\t %ld elements\n\t array bytes: %u\n",
@@ -303,7 +329,7 @@ void _buildBottomAccelStruct(CLContext* ctx,
     unsigned int bufferSizeByte = sizeof(AccelStructBottom) +
         nodeListSize + faceListSize + vertexListSize;
 
-#ifndef NDEBUG
+#ifdef DATA_LAYOUT_DEBUG
     printf("DeviceBVHNode size: %ld\n\t %ld elements\n\t array bytes: %u\n",
         sizeof(DeviceBVHNode), nodeList.size(), nodeListSize);
     printf("Triangle size: %ld\n\t %ld elements\n\t array bytes: %u\n",
@@ -356,7 +382,7 @@ TopAccelStruct _buildTopAccelStruct(CLContext* ctx,
     unsigned int bufferSizeByte = sizeof(AccelStructTop) +
         nodeListSize + deviceInstListSize + instanceTotalSize;
 
-#ifndef NDEBUG
+#ifdef DATA_LAYOUT_DEBUG
     printf("DeviceBVHNode size: %ld\n\t %ld elements\n\t array bytes: %u\n",
         sizeof(DeviceBVHNode), nodeList.size(), nodeListSize);
     printf("Device instance size: %ld\n\t %ld elements\n\t array bytes: %u\n",

@@ -6,7 +6,7 @@
 namespace RD
 {
 
-#define MAX_LEAF_PRIM_SIZE 16
+#define MAX_LEAF_PRIM_SIZE 8
 
 struct BVHNode
 {

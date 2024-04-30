@@ -233,7 +233,7 @@ __kernel void raygen(
         while (sceneData.depth < RTProp->depth)
         {
             traceRay(topLevel, 1, 3, payload.nextRayOrigin, payload.nextRayDirection,
-                0.01, 1000, &payload, &sceneData, imageArray, sampler);
+                0.001, 1000, &payload, &sceneData, imageArray, sampler);
 
             if (payload.hit)
             {
@@ -497,7 +497,7 @@ void material(struct Payload* payload, struct HitData* hitData,
 
     // Shadow test 
     struct Payload shadowPayload;
-    traceRay(sceneData->topLevel, 2, 4, hitPos, L, 0.01, 1000,
+    traceRay(sceneData->topLevel, 2, 4, hitPos, L, 0.001, 1000,
         &shadowPayload, sceneData, imageArray, sampler);
 
     float3 color = {0.0f, 0.0f, 0.0f};
