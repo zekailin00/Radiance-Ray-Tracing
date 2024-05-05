@@ -8,7 +8,7 @@
 #include "stb_image_write.h"
 
 #define OFF_SCREEN
-#define LOAD_FROM_CACHE
+// #define LOAD_FROM_CACHE
 
 #ifdef LOAD_FROM_CACHE
 #define LOAD_CACHE true
@@ -30,7 +30,7 @@ struct CbData
 
 void render(void* data, unsigned char** image, int* out_width, int* out_height);
 bool RenderSceneConfigUI(CbData *d);
-void rayTracer(std::string& modelFile, std::string& shaderPath,
+void rayTracer(const std::string& modelFile, std::string& shaderPath,
     RD::RayTraceProperties& RTProp, RD::PhysicalCamera& camData, RD::SceneProperties& sceneData);
 
 inline float blenderToXRad(float xDeg)
@@ -61,24 +61,24 @@ inline void blenderToCameraRotation(float xDeg, float yDeg, float zDeg, float& x
 
 inline void blenderToCameraTranslate(float x, float y, float z, float& xOut, float& yOut, float& zOut)
 {
-    xOut = xOut;
+    xOut = x;
     yOut = z;
     zOut = -y;
 }
 
 RD::DirLight blenderToDirLight(float xDeg, float zDeg, float intensity)
 {
-    float xRad = blenderToXRad(xDeg);
+    float xRad = blenderToXRad(-xDeg);
     float zRad = blenderToZRad(zDeg);
 
     aiMatrix3x3 eulerX;
-    aiMatrix3x3::Rotation(xRad, {-1,0,0}, eulerX);
+    aiMatrix3x3::Rotation(xRad, {1,0,0}, eulerX);
 
     aiMatrix3x3 eulerY;
     aiMatrix3x3::Rotation(zRad, {0,1,0}, eulerY);
 
-    aiVector3f lightDir = {0, 0, 1};
-    lightDir = eulerX * eulerY * lightDir;
+    aiVector3f lightDir = {0, 0, -1};
+    lightDir =  eulerY * eulerX * lightDir;
 
     RD::DirLight light = {
         .direction = {lightDir[0], lightDir[1], lightDir[2], 0.0f},
@@ -89,16 +89,30 @@ RD::DirLight blenderToDirLight(float xDeg, float zDeg, float intensity)
 
 int main()
 {
-    std::string modelFile =
+    std::string modelFile;
+    RD::PhysicalCamera camData;
+    modelFile =
         // "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell2.glb"; // helmet
         // "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell-armor.glb"; //armor
-        "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-pbr-standard.glb";
+        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-pbr-standard.glb";
         // "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-transmission.glb";
+        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-camera.glb";
+       "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-helmet.glb";
+    //    "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-dragon.glb";
+        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-buddha.glb";
+        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-bike-and-car.glb";
+        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-house.glb";
 
     std::string shaderPath = "/home/zekailin00/Desktop/ray-tracing/framework/samples/shader.cl";
 
     RD::SceneProperties sceneData;
     sceneData.lightCount[0] = 1;
+
+    /* Define pipeline data inputs */
+    RD::RayTraceProperties RTProp = {
+        .totalSamples = 0,  .batchSize = 5,
+        .depth = 4,         .debug = 0
+    };
 
     // // cornell
     // struct Camera camData = {
@@ -118,19 +132,114 @@ int main()
     //     .color = {10.0f, 10.0f, 10.0f, 1.0f}
     // };
 
-    // material test
-    RD::PhysicalCamera camData = {
-        .widthPixel = 2000.0f,       .heightPixel = 2000.0f,
-        .focalLength = 0.036f,       .sensorWidth = 0.036f,
-        .focalDistance = 2.0f,       .fStop = 0.00f,
-        .x  = 0.00f,  .y  = 6.0f,    .z = -10.0f,
-        .wx = 0.00f,  .wy = 3.1415f, .wz =  0.00f
-    };
-    sceneData.lights[0] = blenderToDirLight(-95.0f, 5.0f, 10.0f);
-
-    // // cornell - details
+    // ////////////////////////////////////////////////////////////
+    // // material test
     // RD::PhysicalCamera camData = {
-    //     .widthPixel = 1000.0f,      .heightPixel = 1000.0f,
+    //     .widthPixel = 2000.0f,       .heightPixel = 2000.0f,
+    //     .focalLength = 0.036f,       .sensorWidth = 0.036f,
+    //     .focalDistance = 2.0f,       .fStop = 0.00f,
+    //     .x  = 0.00f,  .y  = 6.0f,    .z = -10.0f,
+    //     .wx = 0.00f,  .wy = 3.1415f, .wz =  0.00f
+    // };
+    // sceneData.lights[0] = blenderToDirLight(-95.0f, 5.0f, 10.0f);
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+
+
+    // ////////////////////////////////////////////////////////////
+    // // cornell - details, Tonemapping
+    // camData = {
+    //     .widthPixel = 2000.0f,      .heightPixel = 2000.0f,
+    //     .focalLength = 0.030f,      .sensorWidth = 0.036f,
+    //     .focalDistance = 2.0f,      .fStop = 0.00f
+    // };
+    // sceneData.lights[0] = blenderToDirLight(-95.0f, 20.0f, 10.0f);
+    // blenderToCameraTranslate(0, 9, 7.5, camData.x, camData.y, camData.z);
+    // blenderToCameraRotation(-115, 180, 0, camData.wx, camData.wy, camData.wz);
+    // sceneData.lights[0] = blenderToDirLight(-45.0f, 0.0f, 10.0f);
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+
+    ////////////////////////////////////////////////////////////
+    // cornell - dragon
+    camData = {
+        .widthPixel = 4000.0f,      .heightPixel = 4000.0f,
+        .focalLength = 0.100f,      .sensorWidth = 0.036f,
+        .focalDistance = 14.0f,      .fStop = 0.30f
+    };
+    blenderToCameraTranslate(0, 16, 6.5, camData.x, camData.y, camData.z);
+    blenderToCameraRotation(-105, 180, 0, camData.wx, camData.wy, camData.wz);
+    sceneData.lights[0] = blenderToDirLight(-45.0f, 0.0f, 10.0f);
+    rayTracer( "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-dragon.glb",
+        shaderPath, RTProp, camData, sceneData);
+
+    // ////////////////////////////////////////////////////////////
+    // // cornell - buddha
+    // camData = {
+    //     .widthPixel = 2000.0f,      .heightPixel = 2000.0f,
+    //     .focalLength = 0.100f,      .sensorWidth = 0.036f,
+    //     .focalDistance = 14.0f,      .fStop = 0.00f
+    // };
+    // blenderToCameraTranslate(0, 16, 6.5, camData.x, camData.y, camData.z);
+    // blenderToCameraRotation(-105, 180, 0, camData.wx, camData.wy, camData.wz);
+    // sceneData.lights[0] = blenderToDirLight(-45.0f, 0.0f, 10.0f);
+    // rayTracer("/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-buddha.glb",
+    //     shaderPath, RTProp, camData, sceneData);
+
+    // ////////////////////////////////////////////////////////////
+    // // cornell - bike and car
+    // camData = {
+    //     .widthPixel = 2000.0f,      .heightPixel = 2000.0f,
+    //     .focalLength = 0.140f,      .sensorWidth = 0.036f,
+    //     .focalDistance = 24.0f,      .fStop = 0.60f
+    // };
+    // blenderToCameraTranslate(0, 30, 5, camData.x, camData.y, camData.z);
+    // blenderToCameraRotation(-95, 180, 0, camData.wx, camData.wy, camData.wz);
+    // sceneData.lights[0] = blenderToDirLight(-30.0f, 0.0f, 5.0f);
+    // rayTracer("/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-bike-and-car.glb",
+    //     shaderPath, RTProp, camData, sceneData);
+
+    // ////////////////////////////////////////////////////////////
+    // // cornell - house @ glass cups
+    // camData = {
+    //     .widthPixel = 2000.0f,      .heightPixel = 2000.0f,
+    //     .focalLength = 0.050f,      .sensorWidth = 0.036f,
+    //     .focalDistance = 7.4f,      .fStop = 1.20f
+    // };
+    // sceneData.lights[0] = blenderToDirLight(30.0f, 90.0f, 10.0f);
+    // blenderToCameraTranslate(2, 16, 5, camData.x, camData.y, camData.z);
+    // blenderToCameraRotation(-97, 180, -16, camData.wx, camData.wy, camData.wz);
+    // rayTracer("/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-house.glb",
+    //     shaderPath, RTProp, camData, sceneData);
+
+    // ////////////////////////////////////////////////////////////
+    // // cornell - house @ house
+    // camData = {
+    //     .widthPixel = 2000.0f,      .heightPixel = 2000.0f,
+    //     .focalLength = 0.020f,      .sensorWidth = 0.036f,
+    //     .focalDistance = 7.4f,      .fStop = 0.00f
+    // };
+    // sceneData.lights[0] = blenderToDirLight(30.0f, 90.0f, 10.0f);
+    // blenderToCameraTranslate(-4, 18, 10, camData.x, camData.y, camData.z);
+    // blenderToCameraRotation(-140, 180, 0, camData.wx, camData.wy, camData.wz);
+    // rayTracer("/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-house.glb",
+    //     shaderPath, RTProp, camData, sceneData);
+
+    ////////////////////////////////////////////////////////////
+    // // cornell - cathedral
+    // camData = {
+    //     .widthPixel = 2000.0f,      .heightPixel = 2000.0f,
+    //     .focalLength = 0.020f,      .sensorWidth = 0.036f,
+    //     .focalDistance = 7.4f,      .fStop = 0.0f
+    // };
+    // sceneData.lights[0] = blenderToDirLight(-10.0f, 90.0f, 10.0f);
+    // blenderToCameraTranslate(0, 16, 12, camData.x, camData.y, camData.z);
+    // blenderToCameraRotation(-120, 180, 0, camData.wx, camData.wy, camData.wz);
+    // rayTracer("/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-cathedral.glb",
+    //     shaderPath, RTProp, camData, sceneData);
+
+    ////////////////////////////////////////////////////////////
+    // // cornell - details, lighting test
+    // RD::PhysicalCamera camData = {
+    //     .widthPixel = 2000.0f,      .heightPixel = 2000.0f,
     //     .focalLength = 0.030f,      .sensorWidth = 0.036f,
     //     .focalDistance = 2.0f,      .fStop = 0.00f
     // };
@@ -138,17 +247,63 @@ int main()
     // blenderToCameraTranslate(0, 9, 7.5, camData.x, camData.y, camData.z);
     // blenderToCameraRotation(-115, 180, 0, camData.wx, camData.wy, camData.wz);
 
-    /* Define pipeline data inputs */
-    RD::RayTraceProperties RTProp = {
-        .totalSamples = 0,  .batchSize = 10,
-        .depth = 8,         .debug = 0
-    };
+    // sceneData.lights[0] = blenderToDirLight(-45.0f, 90.0f, 10.0f);
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+
+    // sceneData.lights[0] = blenderToDirLight(-45.0f, 60.0f, 10.0f);
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+
+    // sceneData.lights[0] = blenderToDirLight(-45.0f, 30.0f, 10.0f);
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+
+    // sceneData.lights[0] = blenderToDirLight(-45.0f, 0.0f, 10.0f);
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+
+    // sceneData.lights[0] = blenderToDirLight(-45.0f, -30.0f, 10.0f);
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+
+    // sceneData.lights[0] = blenderToDirLight(-45.0f, -60.0f, 10.0f);
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+
+    // sceneData.lights[0] = blenderToDirLight(-45.0f, -90.0f, 10.0f);
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
 
 
-    rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+    // //////////////////////////////////////////////////////////////////////
+    // // camera test
+    // RD::PhysicalCamera camData = {
+    //     .widthPixel = 4000.0f,       .heightPixel = 4000.0f,
+    //     .focalLength = 0.100f,       .sensorWidth = 0.036f,
+    //     .focalDistance = 7.0f,       .fStop = 1.40f,
+    //     .x  = 0.00f,    .y  = 6.0f,    .z = -10.0f,
+    //     .wx = 12.0 / 180.0 * 3.14f,  .wy = 3.1415 - (180.0 - 155.0) / 180.0 * 3.1415,
+    //     .wz = 0.00f
+    // };
+    // blenderToCameraTranslate(0, 50, 7, camData.x, camData.y, camData.z);
+    // sceneData.lights[0] = blenderToDirLight(5.0f, 0.0f, 10.0f);
+
+    // camData.fStop = 1.4f;
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+    // camData.fStop = 2.0f;
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+    // camData.fStop = 4.0f;
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+    // camData.fStop = 8.0f;
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+
+    // camData.fStop = 2.0f;
+    // camData.focalLength = 0.036f;
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+    // camData.focalLength = 0.070f;
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+    // camData.focalLength = 0.100f;
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+    // camData.focalLength = 0.150f;
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+
 }
 
-void rayTracer(std::string& modelFile, std::string& shaderPath,
+void rayTracer(const std::string& modelFile, std::string& shaderPath,
     RD::RayTraceProperties& RTProp, RD::PhysicalCamera& camData, RD::SceneProperties& sceneData)
 {
     size_t imageSize = camData.widthPixel * camData.heightPixel * RD_CHANNEL;

@@ -1,7 +1,9 @@
 [
-    {"raygen": "raygen", "closestHit": "", "anyHit": "", "miss": ""},
-    {"raygen": "", "closestHit": "material", "anyHit": "", "miss": ""},
-    {"raygen": "", "closestHit": "shadow", "anyHit": "", "miss": ""},
-    {"raygen": "", "closestHit": "", "anyHit": "", "miss": "environment"},
-    {"raygen": "", "closestHit": "", "anyHit": "", "miss": "shadowMiss"}
+    {"raygen": "raygen", "closestHit": "",         "anyHit": "",          "miss": ""},
+    {"raygen": "",       "closestHit": "material", "anyHit": "",          "miss": ""},
+    {"raygen": "",       "closestHit": "shadow",   "anyHit": "anyShadow", "miss": ""},
+    {"raygen": "",       "closestHit": "",         "anyHit": "",          "miss": "environment"},
+    {"raygen": "",       "closestHit": "",         "anyHit": "",          "miss": "shadowMiss"}
 ]
+
+
