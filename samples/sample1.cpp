@@ -8,7 +8,7 @@
 #include "stb_image_write.h"
 
 #define OFF_SCREEN
-// #define LOAD_FROM_CACHE
+#define LOAD_FROM_CACHE
 
 #ifdef LOAD_FROM_CACHE
 #define LOAD_CACHE true
@@ -93,12 +93,12 @@ int main()
     RD::PhysicalCamera camData;
     modelFile =
         // "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell2.glb"; // helmet
-        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell-armor.glb"; //armor
+        "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell-armor.glb"; //armor
         // "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-pbr-standard.glb";
         // "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-transmission.glb";
         // "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-camera.glb";
-       "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-helmet.glb";
-    //    "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-dragon.glb";
+        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-helmet.glb";
+        // "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-dragon.glb";
         // "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-buddha.glb";
         // "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-bike-and-car.glb";
         // "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-house.glb";
@@ -110,8 +110,8 @@ int main()
 
     /* Define pipeline data inputs */
     RD::RayTraceProperties RTProp = {
-        .totalSamples = 0,  .batchSize = 5,
-        .depth = 4,         .debug = 0
+        .totalSamples = 0,  .batchSize = 512,
+        .depth = 8,         .debug = 0
     };
 
     // // cornell
@@ -159,30 +159,44 @@ int main()
     // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
 
     ////////////////////////////////////////////////////////////
-    // cornell - dragon
-    camData = {
-        .widthPixel = 4000.0f,      .heightPixel = 4000.0f,
-        .focalLength = 0.100f,      .sensorWidth = 0.036f,
-        .focalDistance = 14.0f,      .fStop = 0.30f
-    };
-    blenderToCameraTranslate(0, 16, 6.5, camData.x, camData.y, camData.z);
-    blenderToCameraRotation(-105, 180, 0, camData.wx, camData.wy, camData.wz);
-    sceneData.lights[0] = blenderToDirLight(-45.0f, 0.0f, 10.0f);
-    rayTracer( "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-dragon.glb",
-        shaderPath, RTProp, camData, sceneData);
-
-    // ////////////////////////////////////////////////////////////
-    // // cornell - buddha
+    // // cornell - dragon
     // camData = {
     //     .widthPixel = 2000.0f,      .heightPixel = 2000.0f,
     //     .focalLength = 0.100f,      .sensorWidth = 0.036f,
-    //     .focalDistance = 14.0f,      .fStop = 0.00f
+    //     .focalDistance = 14.0f,      .fStop = 0.50f
     // };
     // blenderToCameraTranslate(0, 16, 6.5, camData.x, camData.y, camData.z);
     // blenderToCameraRotation(-105, 180, 0, camData.wx, camData.wy, camData.wz);
     // sceneData.lights[0] = blenderToDirLight(-45.0f, 0.0f, 10.0f);
-    // rayTracer("/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-buddha.glb",
+    // rayTracer( "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-dragon.glb",
     //     shaderPath, RTProp, camData, sceneData);
+
+
+    ////////////////////////////////////////////////////////////
+    // // cornell - BVH test
+    // camData = {
+    //     .widthPixel = 4000.0f,      .heightPixel = 4000.0f,
+    //     .focalLength = 0.100f,      .sensorWidth = 0.036f,
+    //     .focalDistance = 14.0f,      .fStop = 0.0f
+    // };
+    // blenderToCameraTranslate(0, 16, 6.5, camData.x, camData.y, camData.z);
+    // blenderToCameraRotation(-105, 180, 0, camData.wx, camData.wy, camData.wz);
+    // sceneData.lights[0] = blenderToDirLight(-45.0f, 0.0f, 10.0f);
+    // rayTracer( "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-sphere.glb",
+    //     shaderPath, RTProp, camData, sceneData);
+
+    // ////////////////////////////////////////////////////////////
+    // cornell - buddha
+    camData = {
+        .widthPixel = 2000.0f,      .heightPixel = 2000.0f,
+        .focalLength = 0.100f,      .sensorWidth = 0.036f,
+        .focalDistance = 14.0f,      .fStop = 0.00f
+    };
+    blenderToCameraTranslate(0, 16, 6.5, camData.x, camData.y, camData.z);
+    blenderToCameraRotation(-105, 180, 0, camData.wx, camData.wy, camData.wz);
+    sceneData.lights[0] = blenderToDirLight(-45.0f, 0.0f, 10.0f);
+    rayTracer("/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-buddha-stone.glb",
+        shaderPath, RTProp, camData, sceneData);
 
     // ////////////////////////////////////////////////////////////
     // // cornell - bike and car
@@ -223,7 +237,7 @@ int main()
     // rayTracer("/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-house.glb",
     //     shaderPath, RTProp, camData, sceneData);
 
-    ////////////////////////////////////////////////////////////
+    // //////////////////////////////////////////////////////////
     // // cornell - cathedral
     // camData = {
     //     .widthPixel = 2000.0f,      .heightPixel = 2000.0f,
@@ -301,6 +315,49 @@ int main()
     // camData.focalLength = 0.150f;
     // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
 
+
+    ///////////////////////////////////////////////////////////////////
+    // // cornell - details of armor, resolution test
+    // camData = {
+    //     .widthPixel = 2000.0f,      .heightPixel = 2000.0f,
+    //     .focalLength = 0.030f,      .sensorWidth = 0.036f,
+    //     .focalDistance = 2.0f,      .fStop = 0.00f
+    // };
+    // sceneData.lights[0] = blenderToDirLight(-95.0f, 20.0f, 10.0f);
+    // blenderToCameraTranslate(0, 9, 7.5, camData.x, camData.y, camData.z);
+    // blenderToCameraRotation(-115, 180, 0, camData.wx, camData.wy, camData.wz);
+    // sceneData.lights[0] = blenderToDirLight(-45.0f, 0.0f, 10.0f);
+
+    // camData.widthPixel = camData.heightPixel = 100;
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+    // camData.widthPixel = camData.heightPixel = 500;
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+    // camData.widthPixel = camData.heightPixel = 1000;
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+    // camData.widthPixel = camData.heightPixel = 2000;
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+    // camData.widthPixel = camData.heightPixel = 3000;
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+    // camData.widthPixel = camData.heightPixel = 4000;
+    // rayTracer(modelFile, shaderPath, RTProp, camData, sceneData);
+
+    // // // //////////////////////////////////////////////////////
+    // // triangle count v. build time
+    // RD::Platform* plt = RD::Platform::GetPlatform();
+    // modelFile = "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-transmission.glb";
+    // RD::Scene::Load(modelFile, plt, false);
+    // modelFile = "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-pbr-standard.glb";
+    // RD::Scene::Load(modelFile, plt, false);
+    // modelFile = "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-helmet.glb";
+    // RD::Scene::Load(modelFile, plt, false);
+    // modelFile = "/home/zekailin00/Desktop/ray-tracing/framework/assets/Cornell-armor.glb";
+    // RD::Scene::Load(modelFile, plt, false);
+    // modelFile = "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-dragon.glb";
+    // RD::Scene::Load(modelFile, plt, false);
+    // modelFile = "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-buddha.glb";
+    // RD::Scene::Load(modelFile, plt, false);
+    // modelFile = "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-bike-and-car.glb";
+    // RD::Scene::Load(modelFile, plt, false);
 }
 
 void rayTracer(const std::string& modelFile, std::string& shaderPath,
@@ -413,7 +470,7 @@ void render(void* data, unsigned char** image, int* out_width, int* out_height)
 
 #ifdef OFF_SCREEN
     time(&end_t);
-    timeStr = ctime(&start_t);
+    timeStr = ctime(&end_t);
     printf("End of ray tracing: %s", timeStr);
     diff_t = difftime(end_t, start_t);
     printf("Execution time = %f\n", diff_t);
