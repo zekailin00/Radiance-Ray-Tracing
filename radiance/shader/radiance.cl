@@ -30,7 +30,7 @@ void callAnyHit(bool* cont, int sbtRecordOffset, struct Payload* payload, struct
 
 
 bool intersectTriangle(float3 origin, float3 direction, 
-                       const struct Triangle* triangle, Vertex* vertexList,
+                       __global const struct Triangle* triangle, __global Vertex* vertexList,
                        float3* intersectPoint, float* distance, float3* bary);
 bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax);
 
@@ -39,7 +39,7 @@ bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax
 #define BVH_BOT_STACK_SIZE 100
 
 bool intersectBot(
-    struct AccelStruct* accelStruct, float3 origin, float3 direction,
+    __global struct AccelStruct* accelStruct, float3 origin, float3 direction,
     float Tmin, float Tmax, struct HitData* hitData, bool* cont, int sbtRecordOffset,
     struct Payload* payload, struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
 {
@@ -55,8 +55,8 @@ bool intersectBot(
 		unsigned int nodeIdx = stack[stackIdx - 1];
 		stackIdx--;
 
-        struct BVHNode* nodeList = TO_BVH_NODE(accelStruct);
-		struct BVHNode* node = nodeList + nodeIdx;
+        __global struct BVHNode* nodeList = TO_BVH_NODE(accelStruct);
+		__global struct BVHNode* node = nodeList + nodeIdx;
 
 		if (!IS_LEAF(node)) // INNER NODE
         {
@@ -76,13 +76,13 @@ bool intersectBot(
 		}
         else if (node->node.leaf._type == TYPE_TRIG)
         {
-            Vertex* vertexList = TO_VERTEX(accelStruct);
-            struct Triangle* faceList = TO_FACE(accelStruct);
+            __global Vertex* vertexList = TO_VERTEX(accelStruct);
+            __global struct Triangle* faceList = TO_FACE(accelStruct);
 
             // loop over every triangle in the leaf node
             for (unsigned int i = 0; i < GET_COUNT(node); i++)
             {
-                struct Triangle* face = &faceList[node->node.leaf._startIndexList + i];
+                __global struct Triangle* face = &faceList[node->node.leaf._startIndexList + i];
 
                 float3 intersectPoint;
                 float distance;
@@ -108,7 +108,7 @@ bool intersectBot(
 }
 
 bool intersectTop(
-    struct AccelStruct* accelStruct, float3 origin, float3 direction,
+    __global struct AccelStruct* accelStruct, float3 origin, float3 direction,
     float Tmin, float Tmax, struct HitData* hitData, int sbtRecordOffset,
     struct Payload* payload, struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
 {
@@ -125,8 +125,8 @@ bool intersectTop(
 		unsigned int nodeIdx = stack[stackIdx - 1];
 		stackIdx--;
 
-        struct BVHNode* nodeList = TO_BVH_NODE(accelStruct);
-		struct BVHNode* node = nodeList + nodeIdx;
+        __global struct BVHNode* nodeList = TO_BVH_NODE(accelStruct);
+		__global struct BVHNode* node = nodeList + nodeIdx;
 
 		if (!IS_LEAF(node)) // INNER NODE
         {
@@ -146,12 +146,12 @@ bool intersectTop(
 		}
         else if (node->node.leaf._type == TYPE_INST)
         {
-            struct Instance* instanceList = TO_INST(accelStruct);
+            __global struct Instance* instanceList = TO_INST(accelStruct);
 
             for (unsigned int i = 0; i < GET_COUNT(node); i++)
             {
-                struct Instance* instance = &instanceList[node->node.leaf._startIndexList + i];
-                struct AccelStruct* botAccelStruct = TO_BOT_AS(accelStruct, instance);
+                __global struct Instance* instance = &instanceList[node->node.leaf._startIndexList + i];
+                __global struct AccelStruct* botAccelStruct = TO_BOT_AS(accelStruct, instance);
 
                 mat4x4 transform                    = hitData->transform;
                 unsigned int instanceIndex          = hitData->instanceIndex;         // Top-level instance index (gl_InstanceID)
@@ -163,7 +163,7 @@ bool intersectTop(
                 float4 localOrigin, localDir;
                 mat4x4 inverse;
 
-                Vec4ToMat4x4(&instance->r0, &instance->r1, &instance->r2, &instance->r3, &hitData->transform);
+                Vec4ToMat4x4(instance->r0, instance->r1, instance->r2, instance->r3, &hitData->transform);
                 InverseMat4x4(&hitData->transform, &inverse);
                 MultiplyMat4Vec4(&inverse, &rayPos, &localOrigin);
                 MultiplyMat4Vec4(&inverse, &rayDir, &localDir);
@@ -209,7 +209,7 @@ bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax
 
 // https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
 bool intersectTriangle(float3 origin, float3 direction, 
-                       const struct Triangle* triangle, Vertex* vertexList,
+                       __global const struct Triangle* triangle, __global Vertex* vertexList,
                        float3* intersectPoint, float* distance, float3* bary)
 {
     float3 edge1 = vertexList[triangle->idx1].xyz - vertexList[triangle->idx0].xyz;
@@ -221,7 +221,7 @@ bool intersectTriangle(float3 origin, float3 direction,
     if (det == 0)
         return false;    // This ray is parallel to this triangle.
 
-    float inv_det = 1.0 / det;
+    float inv_det = 1.0f / det;
     float3 s = origin - vertexList[triangle->idx0].xyz;
     float b1 = inv_det * dot(s, ray_cross_e2);
 
@@ -252,7 +252,7 @@ bool intersectTriangle(float3 origin, float3 direction,
 
 //!raygen 
 void traceRay(
-    struct AccelStruct* topLevel,
+    __global struct AccelStruct* topLevel,
     int sbtRecordOffset, int missIndex,
     float3 origin,
     float3 direction,

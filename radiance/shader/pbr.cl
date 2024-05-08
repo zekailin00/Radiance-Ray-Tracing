@@ -1,6 +1,6 @@
 #include "math.cl"
 
-const float PI = 3.14159265359;
+#define PI 3.14159265359f
 
 // Normal Distribution function --------------------------------------
 float D_GGX(float dotNH, float roughness)
@@ -8,16 +8,16 @@ float D_GGX(float dotNH, float roughness)
     // to do, not abs, needs direction
 	float alpha = roughness * roughness;
 	float alpha2 = alpha * alpha;
-	float denom = dotNH * dotNH * (alpha2 - 1.0) + 1.0;
+	float denom = dotNH * dotNH * (alpha2 - 1.0f) + 1.0f;
 	return  (alpha2)/(PI * denom*denom); 
 }
 
 // Disney Geometric Shadowing function ----------------------------------
 float G1_GGX_Schlick(float NdotV, float roughness) {
   //float r = roughness; // original
-  float r = 0.5 + 0.5 * roughness; // Disney remapping
-  float k = (r * r) / 2.0;
-  float denom = NdotV * (1.0 - k) + k;
+  float r = 0.5f + 0.5f * roughness; // Disney remapping
+  float k = (r * r) / 2.0f;
+  float denom = NdotV * (1.0f - k) + k;
   return NdotV / denom;
 }
 
@@ -32,7 +32,7 @@ float3 F_Schlick(float cosTheta, float metallic, float3 albedo)
 {
     float3 minValue = {0.04f, 0.04f, 0.04f};
 	float3 F0 = mix(minValue, albedo, metallic);
-	float3 F = F0 + (1.0f - F0) * (float)pow(1.0 - cosTheta, 5.0);
+	float3 F = F0 + (1.0f - F0) * (float)pow(1.0f - cosTheta, 5.0f);
 	return F;
 }
 
@@ -98,10 +98,10 @@ float G_pbrt(float3 wo, float3 wi, float3 N, float roughness)
 // Geometric Shadowing function --------------------------------------
 float G_SchlicksmithGGX(float dotNL, float dotNV, float roughness)
 {
-	float r = (roughness + 1.0);
-	float k = (r*r) / 8.0;
-	float GL = dotNL / (dotNL * (1.0 - k) + k);
-	float GV = dotNV / (dotNV * (1.0 - k) + k);
+	float r = (roughness + 1.0f);
+	float k = (r*r) / 8.0f;
+	float GL = dotNL / (dotNL * (1.0f - k) + k);
+	float GV = dotNV / (dotNV * (1.0f - k) + k);
 	return GL * GV;
 }
 
@@ -110,8 +110,8 @@ float D_GGX_not_remapped(float NoH, float roughness)
     //FIXME: remapping inside or outside?
     // no remapping
     float a = NoH * roughness;
-    float k = roughness / (1.0 - NoH * NoH + a * a);
-    return k * k * (1.0 / PI);
+    float k = roughness / (1.0f - NoH * NoH + a * a);
+    return k * k * (1.0f / PI);
 }
 
 // Roughness Remapping -------------------------------------------------
@@ -128,14 +128,14 @@ float G_SmithGGXCorrelated(float NoL, float NoV, float roughness)
     float a2 = roughness * roughness;
     float GGXL = NoV * sqrt((-NoL * a2 + NoL) * NoL + a2);
     float GGXV = NoL * sqrt((-NoV * a2 + NoV) * NoV + a2);
-    return 0.5 / (GGXV + GGXL);
+    return 0.5f / (GGXV + GGXL);
 }
 
 // Disney diffuse function ----------------------------------------------
 float3 Diffuse_Disney(float3 c_diff, float roughness, float dotNL, float dotNV, float dotVH)
 {
     float3 reflectance =  (1 / PI) * c_diff;
-    float FD90 = 0.5 + 2 * roughness * dotVH * dotVH;
+    float FD90 = 0.5f + 2 * roughness * dotVH * dotVH;
     float factorNL = (1 + (FD90 - 1) * pow(1 - dotNL, 5.0f));
     float factorNV = (1 + (FD90 - 1) * pow(1 - dotNV, 5.0f));
     float3 disneyDiffuse = reflectance * factorNL * factorNV;
@@ -202,14 +202,14 @@ float3 sampleMicrofacetBRDF(
     float3 random, float3* nextFactor) 
 {
     // https://ameye.dev/notes/sampling-the-hemisphere/
-	if(random.z > 0.5)
+	if(random.z > 0.5f)
 	{
 		// diffuse case
 
 		// important sampling diffuse
 		// pdf = cos(theta) * sin(theta) / PI
 		float theta = acos(sqrt(random.y));
-		float phi = 2.0 * PI * random.x;
+		float phi = 2.0f * PI * random.x;
 		// sampled indirect diffuse direction in normal space
 		float4 localDiffuseDir = {sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta), 0.0f};
         mat4x4 mat; float4 L;
@@ -235,8 +235,8 @@ float3 sampleMicrofacetBRDF(
 		// important sample GGX
 		// pdf = D * cos(theta) * sin(theta)
 		float a = roughness * roughness;
-		float theta = acos(sqrt((1.0 - random.y) / (1.0 + (a * a - 1.0) * random.y)));
-		float phi = 2.0 * PI * random.x;
+		float theta = acos(sqrt((1.0f - random.y) / (1.0f + (a * a - 1.0f) * random.y)));
+		float phi = 2.0f * PI * random.x;
 
 		float4 localH = {sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta), 0.0f};
         mat4x4 mat; float4 H;
@@ -305,7 +305,7 @@ float3 sampleMicrofacetBRDF_transm(float3 V, float3 N, float3 baseColor,
             
             float a = roughness * roughness;
             float theta = acos(sqrt((1.0f - random.y) / (1.0f + (a * a - 1.0f) * random.y)));
-            float phi = 2.0 * PI * random.x;
+            float phi = 2.0f * PI * random.x;
 
             float4 localH = {sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta), 0.0f};
             mat4x4 mat; float4 tmp;

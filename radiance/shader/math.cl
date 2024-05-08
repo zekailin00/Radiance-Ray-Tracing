@@ -15,9 +15,9 @@ float3 random_pcg3d(uint3 v)
 	v.x += v.y*v.z; v.y += v.z*v.x; v.z += v.x*v.y;
 
 	float3 ret;
-	ret.x = ((float)v.x /0xffffffffu);
-	ret.y = ((float)v.y /0xffffffffu);
-	ret.z = ((float)v.z /0xffffffffu);
+	ret.x = (float)v.x / (float)0xffffffffu;
+	ret.y = (float)v.y / (float)0xffffffffu;
+	ret.z = (float)v.z / (float)0xffffffffu;
 
 	return ret;
 }
@@ -176,7 +176,7 @@ bool InverseMat4x4(mat4x4* m, mat4x4* invOut)
     if (det == 0)
         return false;
 
-    det = 1.0 / det;
+    det = 1.0f / det;
     *invOut = inv * det;
 
     return true;
@@ -258,20 +258,20 @@ void TransformToTranslate(mat4x4* a, vec3* out)
     out->z = a->sb;
 }
 
-void Vec4ToMat4x4(vec4* r0, vec4* r1, vec4* r2, vec4* r3, mat4x4* out)
+void Vec4ToMat4x4(vec4 r0, vec4 r1, vec4 r2, vec4 r3, mat4x4* out)
 {
-    out->s0123 = *r0;
-    out->s4567 = *r1;
-    out->s89ab = *r2;
-    out->scdef = *r3;
+    out->s0123 = r0;
+    out->s4567 = r1;
+    out->s89ab = r2;
+    out->scdef = r3;
 }
 
 void GetNormalSpace(float3 normal, mat4x4* out)
 {
-    float3 someVec = {1.0, 0.0, 0.0};
+    float3 someVec = {1.0f, 0.0f, 0.0f};
     float dd = dot(someVec, normal);
-    float3 tangent = {0.0, 1.0, 0.0};
-    if(1.0 - fabs(dd) > 1e-6) {
+    float3 tangent = {0.0f, 1.0f, 0.0f};
+    if(1.0f - fabs(dd) > 1e-6f) {
         tangent = normalize(cross(someVec, normal));
     }
     float3 bitangent = cross(normal, tangent);

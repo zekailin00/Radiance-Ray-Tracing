@@ -89,15 +89,16 @@ typedef float4 Vertex; // 1 block
 #define TYPE_BOT_AS 2
 
 
-#define TO_BVH_NODE(accelStruct) (struct BVHNode*)(((char*)accelStruct) + accelStruct->nodeByteOffset)
-#define TO_VERTEX(accelStruct)   (Vertex*)(((char*)accelStruct) + accelStruct->u.bot.vertexOffset)
-#define TO_FACE(accelStruct)     (struct Triangle*)(((char*)accelStruct) + accelStruct->u.bot.faceByteOffset)
-#define TO_INST(accelStruct)     (struct Instance*)(((char*)accelStruct) + accelStruct->u.top.instByteOffset)
-#define TO_BOT_AS(topAS, inst)   (struct AccelStruct*)(((char*)topAS) + inst->instanceOffset)
+#define TO_BVH_NODE(accelStruct) (__global struct BVHNode*)(((__global char*)accelStruct) + accelStruct->nodeByteOffset)
+#define TO_VERTEX(accelStruct)   (__global Vertex*)(((__global char*)accelStruct) + accelStruct->u.bot.vertexOffset)
+#define TO_FACE(accelStruct)     (__global struct Triangle*)(((__global char*)accelStruct) + accelStruct->u.bot.faceByteOffset)
+#define TO_INST(accelStruct)     (__global struct Instance*)(((__global char*)accelStruct) + accelStruct->u.top.instByteOffset)
+#define TO_BOT_AS(topAS, inst)   (__global struct AccelStruct*)(((__global char*)topAS) + inst->instanceOffset)
 
 #define IS_LEAF(BVHNode)         (BVHNode->node.leaf._count & 0x80000000)
 #define GET_COUNT(BVHNode)       (BVHNode->node.leaf._count & 0x7fffffff)
 
+/*
 void printAccelStructTop(struct AccelStruct* in)
 {
     printf("AccelStructTop:\n");
@@ -230,6 +231,8 @@ void printTopAS(struct AccelStruct* topLevel)
     printInstance(instance);
     printBotASFromInstance(topLevel, instance);
 }
+
+*/
 
 /*
 

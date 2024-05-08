@@ -13,16 +13,16 @@ struct Payload
 
 struct SceneData
 {
-    struct PhysicalCamera*     camData;
-    struct SceneProperties*    scene;
+    __global struct PhysicalCamera*     camData;
+    __global struct SceneProperties*    scene;
     
-    struct MeshInfo*           meshInfoData;
-    float*                     vertexData;
-    uint*                      indexData;
-    float*                     uvData;
-    float*                     normalData;
-    struct Material*           materials;
-    struct AccelStruct*        topLevel;
+    __global struct MeshInfo*           meshInfoData;
+    __global float*                     vertexData;
+    __global uint*                      indexData;
+    __global float*                     uvData;
+    __global float*                     normalData;
+    __global struct Material*           materials;
+    __global struct AccelStruct*        topLevel;
 
     int                        depth;
     unsigned int               frameID;
@@ -108,7 +108,7 @@ inline float2 sampleUniformDisk(float2 u)
     return r * tmp;
 }
 
-void generateRay(const struct PhysicalCamera* cam,
+void generateRay(const global struct PhysicalCamera* cam,
     const uint3 randomInput, float3* position, float3* direction)
 {
     /* the unique global id of the work item for the current pixel */
@@ -121,8 +121,8 @@ void generateRay(const struct PhysicalCamera* cam,
     float3 random = random_pcg3d(randomInput);
 
     /* convert int to float in range [-0.5, 0.5]  */
-    float fx = (((float)x + random.x)/ cam->widthPixel) - 0.5;
-    float fy = 0.5 - (((float)y + random.y) / cam->heightPixel);
+    float fx = (((float)x + random.x)/ cam->widthPixel) - 0.5f;
+    float fy = 0.5f - (((float)y + random.y) / cam->heightPixel);
 
     float aspectRatio = cam->heightPixel / cam->widthPixel;
     float4 pinholeDirection = {
@@ -233,7 +233,7 @@ __kernel void raygen(
         while (sceneData.depth < RTProp->depth)
         {
             traceRay(topLevel, 1, 3, payload.nextRayOrigin, payload.nextRayDirection,
-                0.001, 1000, &payload, &sceneData, imageArray, sampler);
+                0.001f, 1000, &payload, &sceneData, imageArray, sampler);
 
             if (payload.hit)
             {
@@ -307,9 +307,9 @@ __kernel void raygen(
 
 inline uint3 getIndices(struct SceneData* sceneData, struct HitData* hitData)
 {
-    struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
+    __global struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
     int io = meshInfo->indexOffset;
-    uint* indexData = sceneData->indexData;
+    __global uint* indexData = sceneData->indexData;
 
     uint i0 = indexData[io + hitData->primitiveIndex * 3 + 0];
     uint i1 = indexData[io + hitData->primitiveIndex * 3 + 1];
@@ -321,9 +321,9 @@ inline uint3 getIndices(struct SceneData* sceneData, struct HitData* hitData)
 
 inline float2 getUV(struct SceneData* sceneData, struct HitData* hitData)
 {
-    struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
+    __global struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
     int uo = meshInfo->uvOffset;
-    float* uvData = sceneData->uvData;
+    __global float* uvData = sceneData->uvData;
     uint3 i = getIndices(sceneData, hitData);
 
     float2 uv0 = {uvData[uo + i.x * 3 + 0], uvData[uo + i.x * 3 + 1]};
@@ -337,9 +337,9 @@ inline float2 getUV(struct SceneData* sceneData, struct HitData* hitData)
 
 inline float3 getFaceNormal(struct SceneData* sceneData, struct HitData* hitData)
 {
-    struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
+    __global struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
     int no = meshInfo->normalOffset;
-    float* normalData = sceneData->normalData;
+    __global float* normalData = sceneData->normalData;
     uint3 i = getIndices(sceneData, hitData);
 
     float3 N;
@@ -369,14 +369,14 @@ inline float3 getFaceNormal(struct SceneData* sceneData, struct HitData* hitData
 inline float3 getMatNormal(struct SceneData* sceneData, struct HitData* hitData,
     image2d_array_t imageArray, sampler_t sampler, float3 faceNormal)
 {
-    struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
-    struct Material* material = &sceneData->materials[meshInfo->materialIndex];
+    __global struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
+    __global struct Material* material = &sceneData->materials[meshInfo->materialIndex];
 
     if (material->normalTexIdx != -1)
     {
         float2 uv = getUV(sceneData, hitData);
         float4 coord = {uv.x, 1.0f - uv.y, (float)material->normalTexIdx, 0.0f};
-        uint4 tex = read_imageui(imageArray, sampler, coord);
+        uint4 tex = 0.0f;//read_imageui(imageArray, sampler, coord);
         float4 localNormal = {
             clamp(tex.x / 255.0f, 0.0f, 1.0f),
             clamp(tex.y / 255.0f, 0.0f, 1.0f),
@@ -398,8 +398,8 @@ inline float3 getMatNormal(struct SceneData* sceneData, struct HitData* hitData,
 inline float4 getMaterialProp(struct SceneData* sceneData, struct HitData* hitData,
     image2d_array_t imageArray, sampler_t sampler)
 {
-    struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
-    struct Material* material = &sceneData->materials[meshInfo->materialIndex];
+    __global struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
+    __global struct Material* material = &sceneData->materials[meshInfo->materialIndex];
     float2 uv = getUV(sceneData, hitData);
 
     float metallicFrag;
@@ -408,7 +408,7 @@ inline float4 getMaterialProp(struct SceneData* sceneData, struct HitData* hitDa
     else
     {
         float4 coord = {uv.x, 1.0f - uv.y, (float)material->metallicTexIdx, 0.0f};
-        uint4 tex = read_imageui(imageArray, sampler, coord);
+        uint4 tex = 0.0f;//read_imageui(imageArray, sampler, coord);
         metallicFrag = clamp(tex.z / 255.0f, 0.0f, 1.0f);
     }
 
@@ -418,7 +418,7 @@ inline float4 getMaterialProp(struct SceneData* sceneData, struct HitData* hitDa
     else
     {
         float4 coord = {uv.x, 1.0f - uv.y, (float)material->roughnessTexIdx, 0.0f};
-        uint4 tex = read_imageui(imageArray, sampler, coord);
+        uint4 tex = 0.0f;//read_imageui(imageArray, sampler, coord);
         roughnessFrag = clamp(tex.y / 255.0f, 0.05f, 1.0f);
     }
 
@@ -432,8 +432,8 @@ inline float4 getMaterialProp(struct SceneData* sceneData, struct HitData* hitDa
 inline float3 getAlbedo(struct SceneData* sceneData, struct HitData* hitData,
     image2d_array_t imageArray, sampler_t sampler)
 {
-    struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
-    struct Material* material = &sceneData->materials[meshInfo->materialIndex];
+    __global struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
+    __global struct Material* material = &sceneData->materials[meshInfo->materialIndex];
     float2 uv = getUV(sceneData, hitData);
 
     float3 albedoFrag;
@@ -442,7 +442,7 @@ inline float3 getAlbedo(struct SceneData* sceneData, struct HitData* hitData,
     else
     {
         float4 coord = {uv.x, 1.0f - uv.y, (float)material->albedoTexIdx, 0.0f};
-        uint4 tex = read_imageui(imageArray, sampler, coord);
+        uint4 tex = 0.0f;//read_imageui(imageArray, sampler, coord);
         albedoFrag.x = clamp(tex.x / 255.0f, 0.0f, 1.0f);
         albedoFrag.y = clamp(tex.y / 255.0f, 0.0f, 1.0f);
         albedoFrag.z = clamp(tex.z / 255.0f, 0.0f, 1.0f);
@@ -469,7 +469,7 @@ inline float3 getHitPosition(struct HitData* hitData, float3 N)
 
 inline float3 getLightDirection(struct SceneData* sceneData)
 {
-    struct SceneProperties* scene = sceneData->scene;
+    __global struct SceneProperties* scene = sceneData->scene;
     float3 L = normalize(-scene->lights[0].direction.xyz);
     return L;
 }
@@ -497,13 +497,13 @@ void material(struct Payload* payload, struct HitData* hitData,
 
     // Shadow test 
     struct Payload shadowPayload;
-    traceRay(sceneData->topLevel, 2, 4, hitPos, L, 0.001, 1000,
+    traceRay(sceneData->topLevel, 2, 4, hitPos, L, 0.001f, 1000,
         &shadowPayload, sceneData, imageArray, sampler);
 
     float3 color = {0.0f, 0.0f, 0.0f};
     if (!shadowPayload.hit) // TODO: support multiple lights
     {
-        struct SceneProperties* scene = sceneData->scene;
+        __global struct SceneProperties* scene = sceneData->scene;
         float3 radiance = scene->lights[0].color.rgb; // dot is included in brdf
         color += microfacetBRDF(L, V, N, albedo, mat.x, mat.y, mat.z, mat.w) * radiance;
     }
@@ -551,9 +551,9 @@ void environment(struct Payload* payload,
     struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
 {
     payload->hit = false;
-    payload->color.x = 0.2;
-    payload->color.y = 0.2;
-    payload->color.z = 0.5;
+    payload->color.x = 0.2f;
+    payload->color.y = 0.2f;
+    payload->color.z = 0.5f;
 }
 
 void shadow(struct Payload* payload, struct HitData* hitData,
