@@ -218,7 +218,7 @@ bool intersectTriangle(float3 origin, float3 direction,
     float3 ray_cross_e2 = cross(direction, edge2);
     float det = dot(edge1, ray_cross_e2);
 
-    if (det > -FLT_EPSILON && det < FLT_EPSILON)
+    if (det == 0)
         return false;    // This ray is parallel to this triangle.
 
     float inv_det = 1.0 / det;
@@ -237,7 +237,7 @@ bool intersectTriangle(float3 origin, float3 direction,
     if (b2 < 0 || b1 + b2 > 1)
         return false;
 
-    if (t > FLT_EPSILON) // ray intersection
+    if (t > 0) // ray intersection
     {
         *distance = t;
         *intersectPoint = origin + direction * t;
