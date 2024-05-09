@@ -188,9 +188,8 @@ __kernel void raygen(
     __global uint*                      indexData,
     __global float*                     uvData,
     __global float*                     normalData,
-    __global struct Material*           materials,
-    image2d_array_t                     imageArray,
-    sampler_t                           sampler,
+    __global struct Material*           materials
+    TEXTURE_TYPE,
     __global struct AccelStruct*        topLevel)
 {
     /* the unique global id of the work item for the current pixel */
@@ -235,13 +234,13 @@ __kernel void raygen(
         while (sceneData.depth < RTProp->depth)
         {
             traceRay(topLevel, 1, 3, payload.nextRayOrigin, payload.nextRayDirection,
-                0.001f, 1000, &payload, &sceneData, imageArray, sampler);
+                0.001f, 1000, &payload, &sceneData TEXTURE_PARAM);
 
             if (payload.hit)
             {
                 // Shadow test 
                 traceRay(topLevel, 2, 4, payload.shadowOrigin, payload.shadowDirection,
-                    0.001f, 1000, &payload, &sceneData, imageArray, sampler);
+                    0.001f, 1000, &payload, &sceneData TEXTURE_PARAM);
                 color += contribution * (payload.radiance + payload.ambience);
                 contribution *= payload.nextFactor;
             }
@@ -371,12 +370,12 @@ inline float3 getFaceNormal(struct SceneData* sceneData, struct HitData* hitData
     return N;
 }
 
-inline float3 getMatNormal(struct SceneData* sceneData, struct HitData* hitData,
-    image2d_array_t imageArray, sampler_t sampler, float3 faceNormal)
+inline float3 getMatNormal(struct SceneData* sceneData, struct HitData* hitData TEXTURE_TYPE, float3 faceNormal)
 {
     __global struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
     __global struct Material* material = &sceneData->materials[meshInfo->materialIndex];
 
+#ifdef IMAGE_SUPPORT
     if (material->normalTexIdx != -1)
     {
         float2 uv = getUV(sceneData, hitData);
@@ -395,13 +394,13 @@ inline float3 getMatNormal(struct SceneData* sceneData, struct HitData* hitData,
         MultiplyMat4Vec4(&transform, &localNormal, &globalNormal);
         faceNormal = normalize(globalNormal.xyz);
     }
+#endif
 
     return faceNormal;
 }
 
 // float4: {metallicFrag, roughnessFrag, transmissionFrag, iorFrag}
-inline float4 getMaterialProp(struct SceneData* sceneData, struct HitData* hitData,
-    image2d_array_t imageArray, sampler_t sampler)
+inline float4 getMaterialProp(struct SceneData* sceneData, struct HitData* hitData TEXTURE_TYPE)
 {
     __global struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
     __global struct Material* material = &sceneData->materials[meshInfo->materialIndex];
@@ -410,22 +409,26 @@ inline float4 getMaterialProp(struct SceneData* sceneData, struct HitData* hitDa
     float metallicFrag;
     if (material->metallicTexIdx == -1)
         metallicFrag = material->metallic;
+#ifdef IMAGE_SUPPORT
     else
     {
         float4 coord = {uv.x, 1.0f - uv.y, (float)material->metallicTexIdx, 0.0f};
         uint4 tex = read_imageui(imageArray, sampler, coord);
         metallicFrag = clamp(tex.z / 255.0f, 0.0f, 1.0f);
     }
+#endif
 
     float roughnessFrag;
     if (material->roughnessTexIdx == -1)
         roughnessFrag = clamp(material->roughness, 0.0f, 1.0f);
+#ifdef IMAGE_SUPPORT
     else
     {
         float4 coord = {uv.x, 1.0f - uv.y, (float)material->roughnessTexIdx, 0.0f};
         uint4 tex = read_imageui(imageArray, sampler, coord);
         roughnessFrag = clamp(tex.y / 255.0f, 0.05f, 1.0f);
     }
+#endif
 
     float transFrag = clamp(material->transmission, 0.0f, 1.0f);
     float iorFrag = clamp(material->ior, 0.0f, 10.0f);
@@ -434,8 +437,7 @@ inline float4 getMaterialProp(struct SceneData* sceneData, struct HitData* hitDa
     return matProp;
 }
 
-inline float3 getAlbedo(struct SceneData* sceneData, struct HitData* hitData,
-    image2d_array_t imageArray, sampler_t sampler)
+inline float3 getAlbedo(struct SceneData* sceneData, struct HitData* hitData TEXTURE_TYPE)
 {
     __global struct MeshInfo* meshInfo = &sceneData->meshInfoData[hitData->instanceIndex];
     __global struct Material* material = &sceneData->materials[meshInfo->materialIndex];
@@ -444,6 +446,7 @@ inline float3 getAlbedo(struct SceneData* sceneData, struct HitData* hitData,
     float3 albedoFrag;
     if (material->albedoTexIdx == -1)
         albedoFrag = material->albedo.rgb;
+#ifdef IMAGE_SUPPORT
     else
     {
         float4 coord = {uv.x, 1.0f - uv.y, (float)material->albedoTexIdx, 0.0f};
@@ -452,6 +455,7 @@ inline float3 getAlbedo(struct SceneData* sceneData, struct HitData* hitData,
         albedoFrag.y = clamp(tex.y / 255.0f, 0.0f, 1.0f);
         albedoFrag.z = clamp(tex.z / 255.0f, 0.0f, 1.0f);
     }
+#endif
     return albedoFrag;
 }
 
@@ -485,20 +489,20 @@ inline float3 getViewDirection(struct Payload* payload)
 }
 
 void material(struct Payload* payload, struct HitData* hitData,
-    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
+    struct SceneData* sceneData TEXTURE_TYPE)
 {
     payload->hit = true;
 
     float3 faceN = getFaceNormal(sceneData, hitData);
     float3 hitPos = getHitPosition(hitData, faceN);
     
-    float3 N = getMatNormal(sceneData, hitData, imageArray, sampler, faceN);
+    float3 N = getMatNormal(sceneData, hitData TEXTURE_PARAM, faceN);
     float3 L = getLightDirection(sceneData);
     float3 V = getViewDirection(payload);
 
     // float4 mat <x,y,z,w> := <metallic, roughness, transmission, ior>
-    float4 mat = getMaterialProp(sceneData, hitData, imageArray, sampler);
-    float3 albedo = getAlbedo(sceneData, hitData, imageArray, sampler);
+    float4 mat = getMaterialProp(sceneData, hitData TEXTURE_PARAM);
+    float3 albedo = getAlbedo(sceneData, hitData TEXTURE_PARAM);
 
     float3 light = sceneData->scene->lights[0].color.rgb; // dot is included in brdf
     payload->radiance = microfacetBRDF(L, V, N, albedo, mat.x, mat.y, mat.z, mat.w) * light;
@@ -532,13 +536,13 @@ void material(struct Payload* payload, struct HitData* hitData,
 }
 
 void shadowMiss(struct Payload* payload,
-    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
+    struct SceneData* sceneData TEXTURE_TYPE)
 {
     payload->hit = false;
 }
 
 void environment(struct Payload* payload,
-    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
+    struct SceneData* sceneData TEXTURE_TYPE)
 {
     payload->hit = false;
     payload->radiance.x = 0.2f;
@@ -547,7 +551,7 @@ void environment(struct Payload* payload,
 }
 
 void shadow(struct Payload* payload, struct HitData* hitData,
-    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
+    struct SceneData* sceneData TEXTURE_TYPE)
 {
     // Shadow test
     payload->hit = true;
@@ -555,42 +559,42 @@ void shadow(struct Payload* payload, struct HitData* hitData,
 }
 
 void anyShadow(bool* cont, struct Payload* payload, struct HitData* hitData,
-    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
+    struct SceneData* sceneData TEXTURE_TYPE)
 {
     // Shadow test
     *cont = false;
 }
 
 void callAnyHit(bool* cont, int sbtRecordOffset, struct Payload* payload, struct HitData* hitData,
-    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
+    struct SceneData* sceneData TEXTURE_TYPE)
 {
 
     int index = hitData->instanceSBTOffset + sbtRecordOffset;
     switch (index)
     {
-		case 2:anyShadow(cont, payload, hitData, sceneData, imageArray, sampler);break;
+		case 2:anyShadow(cont, payload, hitData, sceneData TEXTURE_PARAM);break;
     }
 }
 
 void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitData,
-    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
+    struct SceneData* sceneData TEXTURE_TYPE)
 {
     int index = hitData->instanceSBTOffset + sbtRecordOffset;
     switch (index)
     {
-		case 1:material(payload, hitData, sceneData, imageArray, sampler);break;
-		case 2:shadow(payload, hitData, sceneData, imageArray, sampler);break;
+		case 1:material(payload, hitData, sceneData TEXTURE_PARAM);break;
+		case 2:shadow(payload, hitData, sceneData TEXTURE_PARAM);break;
     }
 }
 
 
 void callMiss(int missIndex, struct Payload* payload,
-    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
+    struct SceneData* sceneData TEXTURE_TYPE)
 {
     switch (missIndex)
     {
-		case 3:environment(payload, sceneData, imageArray, sampler);break;
-		case 4:shadowMiss(payload, sceneData, imageArray, sampler);break;
+		case 3:environment(payload, sceneData TEXTURE_PARAM);break;
+		case 4:shadowMiss(payload, sceneData TEXTURE_PARAM);break;
     }
 }
 
@@ -625,7 +629,7 @@ void callMiss(int missIndex, struct Payload* payload,
 //         // Shadow test: white color if no occlusion
 //         struct Payload shadowPayload;
 //         traceRay(sceneData->topLevel, 2, 4, hitPos, L, 0.01, 1000, &shadowPayload,
-//             sceneData, imageArray, sampler);
+//             sceneData TEXTURE_PARAM);
 //         payload->radiance = shadowPayload.color;
 //     }
 //     else if (sceneData->debug == 7)

@@ -1,20 +1,26 @@
 #include <cassert>
 
+// #define OFF_SCREEN // defined in cmake file
+// #define LOAD_FROM_CACHE
+// #define IMAGE_SUPPORT // TODO: pocl backend support
+
 #include "radiance.h"
 #include "sceneBuilder.h"
-#include "inspector.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#define OFF_SCREEN
-#define LOAD_FROM_CACHE
+#ifndef OFF_SCREEN
+#include "imgui.h"
+#include "inspector.h"
+#endif
 
 #ifdef LOAD_FROM_CACHE
 #define LOAD_CACHE true
 #else
 #define LOAD_CACHE false
 #endif
+
 struct CbData
 {
     RD::Platform* plt;
@@ -103,7 +109,12 @@ int main()
         // "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-bike-and-car.glb";
         // "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-house.glb";
 
-    std::string shaderPath = "/home/zekailin00/Desktop/ray-tracing/framework/samples/shader.cl";
+    std::string shaderPath;
+#ifdef POCL_SUPPORT
+    shaderPath = "/scratch/zekailin00/vortex/tests/opencl/vecadd/kernel.pocl";
+else
+    shaderPath = "/home/zekailin00/Desktop/ray-tracing/framework/samples/shader.cl";
+#endif
 
     RD::SceneProperties sceneData;
     sceneData.lightCount[0] = 1;
@@ -173,30 +184,30 @@ int main()
 
 
     ////////////////////////////////////////////////////////////
-    // // cornell - BVH test
-    // camData = {
-    //     .widthPixel = 4000.0f,      .heightPixel = 4000.0f,
-    //     .focalLength = 0.100f,      .sensorWidth = 0.036f,
-    //     .focalDistance = 14.0f,      .fStop = 0.0f
-    // };
-    // blenderToCameraTranslate(0, 16, 6.5, camData.x, camData.y, camData.z);
-    // blenderToCameraRotation(-105, 180, 0, camData.wx, camData.wy, camData.wz);
-    // sceneData.lights[0] = blenderToDirLight(-45.0f, 0.0f, 10.0f);
-    // rayTracer( "/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-sphere.glb",
-    //     shaderPath, RTProp, camData, sceneData);
-
-    // ////////////////////////////////////////////////////////////
-    // cornell - buddha
+    // cornell - BVH test sphere
     camData = {
         .widthPixel = 2000.0f,      .heightPixel = 2000.0f,
         .focalLength = 0.100f,      .sensorWidth = 0.036f,
-        .focalDistance = 14.0f,      .fStop = 0.00f
+        .focalDistance = 14.0f,      .fStop = 0.0f
     };
     blenderToCameraTranslate(0, 16, 6.5, camData.x, camData.y, camData.z);
     blenderToCameraRotation(-105, 180, 0, camData.wx, camData.wy, camData.wz);
     sceneData.lights[0] = blenderToDirLight(-45.0f, 0.0f, 10.0f);
-    rayTracer("/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-buddha-stone.glb",
+    rayTracer( "/scratch/zekailin00/Radiance-Ray-Tracing/assets/benchmark/cornell-sphere.glb",
         shaderPath, RTProp, camData, sceneData);
+
+    // ////////////////////////////////////////////////////////////
+    // // cornell - buddha
+    // camData = {
+    //     .widthPixel = 2000.0f,      .heightPixel = 2000.0f,
+    //     .focalLength = 0.100f,      .sensorWidth = 0.036f,
+    //     .focalDistance = 14.0f,      .fStop = 0.00f
+    // };
+    // blenderToCameraTranslate(0, 16, 6.5, camData.x, camData.y, camData.z);
+    // blenderToCameraRotation(-105, 180, 0, camData.wx, camData.wy, camData.wz);
+    // sceneData.lights[0] = blenderToDirLight(-45.0f, 0.0f, 10.0f);
+    // rayTracer("/home/zekailin00/Desktop/ray-tracing/framework/assets/benchmark/cornell-buddha-stone.glb",
+    //     shaderPath, RTProp, camData, sceneData);
 
     // ////////////////////////////////////////////////////////////
     // // cornell - bike and car
@@ -399,12 +410,7 @@ void rayTracer(const std::string& modelFile, std::string& shaderPath,
     RD::read_kernel_file_str(shaderPath.c_str(), &shaderCode, &shaderSize);
     RD::ShaderModule shader = RD::CreateShaderModule(plt, shaderCode, shaderSize, "functName..");
 
-    RD::Pipeline pipeline = RD::CreatePipeline({
-        1,          // maxRayRecursionDepth
-        layout,     // PipelineLayout
-        {shader},   // ShaderModule
-        {}          // ShaderGroup
-    });
+    RD::Pipeline pipeline = RD::CreatePipeline({layout, shader});
 
     /* Ray tracing */
     RD::BindPipeline(plt, pipeline);    
@@ -441,8 +447,6 @@ void rayTracer(const std::string& modelFile, std::string& shaderPath,
     renderLoop(render, &data);
 #endif
 }
-
-#include "imgui.h"
 
 void render(void* data, unsigned char** image, int* out_width, int* out_height)
 {
@@ -497,6 +501,7 @@ void render(void* data, unsigned char** image, int* out_width, int* out_height)
 #endif
 }
 
+#ifndef OFF_SCREEN
 
 bool RenderSceneConfigUI(CbData *d)
 {
@@ -546,3 +551,5 @@ bool RenderSceneConfigUI(CbData *d)
 
     return updated;
 }
+
+#endif

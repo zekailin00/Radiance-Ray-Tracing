@@ -157,9 +157,15 @@ ShaderModule CreateShaderModule(Platform* platform, char* code, unsigned int siz
 
     const char* programs[1] = {code};
     const size_t programSizes[1] = {size};
-    tracingProgram = CL_CHECK2(clCreateProgramWithSource(
-        ctx->context, 1, programs, programSizes, &_err));
-    
+
+#ifndef POCL_SUPPORT
+    tracingProgram = CL_CHECK2(clCreateProgramWithSource(ctx->context, 
+        1, programs, programSizes, &_err));
+#else 
+    tracingProgram = CL_CHECK2(clCreateProgramWithBinary(ctx->context,
+        1, &ctx->device_id, programSizes, (const unsigned char **)programs, NULL, &_err));
+#endif
+
     printf("build program and get raygen kernel\n"); fflush(stdout);
 
     std::string includeDir = SHADER_LIB_PATH;
@@ -235,7 +241,7 @@ void BindDescriptorSet(Platform* platform, DescriptorSet descriptorSet)
 
     for (int i = 0; i < descriptorSet.size(); i++)
     {
-         CL_CHECK(clSetKernelArg(pipeline.modules[0], i, sizeof(cl_mem), (void *)&(descriptorSet[i])));
+         CL_CHECK(clSetKernelArg(pipeline.modules, i, sizeof(cl_mem), (void *)&(descriptorSet[i])));
     }
 }
 
@@ -251,7 +257,7 @@ void TraceRays(Platform* platform,
     size_t local_work_size[1] = {1};
     auto time_start = std::chrono::high_resolution_clock::now();
 
-    cl_kernel raygen = platform->activePipeline.modules[0];
+    cl_kernel raygen = platform->activePipeline.modules;
     CLContext* ctx = platform->clContext;
 
 

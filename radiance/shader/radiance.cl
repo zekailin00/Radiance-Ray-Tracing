@@ -17,15 +17,24 @@ struct HitData
     mat4x4 transform;                   // gl_ObjectToWorldEXT 4x3 matrix
 };
 
+
+#ifdef IMAGE_SUPPORT
+    #define TEXTURE_TYPE , image2d_array_t imageArray, sampler_t sampler
+    #define TEXTURE_PARAM , imageArray, sampler
+#else
+    #define TEXTURE_TYPE 
+    #define TEXTURE_PARAM 
+#endif
+
 /* User defined begin */
 struct Payload;
 
 void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitData,
-    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler);
+    struct SceneData* sceneData TEXTURE_TYPE);
 void callMiss(int missIndex, struct Payload* payload, 
-    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler);
+    struct SceneData* sceneData TEXTURE_TYPE);
 void callAnyHit(bool* cont, int sbtRecordOffset, struct Payload* payload, struct HitData* hitData,
-    struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler);
+    struct SceneData* sceneData TEXTURE_TYPE);
 /* User defined end */
 
 
@@ -41,7 +50,7 @@ bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax
 bool intersectBot(
     __global struct AccelStruct* accelStruct, float3 origin, float3 direction,
     float Tmin, float Tmax, struct HitData* hitData, bool* cont, int sbtRecordOffset,
-    struct Payload* payload, struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
+    struct Payload* payload, struct SceneData* sceneData TEXTURE_TYPE)
 {
     bool hasIntersected = false;
 	unsigned int stack[BVH_BOT_STACK_SIZE];     // Stack pointing to BVH node index
@@ -96,7 +105,7 @@ bool intersectBot(
                     hitData->barycentric    = bary;
 
                     hasIntersected = true;
-                    callAnyHit(cont, sbtRecordOffset, payload, hitData, sceneData, imageArray, sampler);
+                    callAnyHit(cont, sbtRecordOffset, payload, hitData, sceneData TEXTURE_PARAM);
                     if (*cont == false)
                         return hasIntersected;
                 }
@@ -110,7 +119,7 @@ bool intersectBot(
 bool intersectTop(
     __global struct AccelStruct* accelStruct, float3 origin, float3 direction,
     float Tmin, float Tmax, struct HitData* hitData, int sbtRecordOffset,
-    struct Payload* payload, struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
+    struct Payload* payload, struct SceneData* sceneData TEXTURE_TYPE)
 {
     bool hasIntersected = false;
 	unsigned int stack[BVH_TOP_STACK_SIZE];     // Stack pointing to BVH node index
@@ -173,7 +182,7 @@ bool intersectTop(
                 hitData->instanceSBTOffset   = instance->SBTOffset;
 
                 bool result = intersectBot(botAccelStruct, localOrigin.xyz, localDir.xyz, Tmin, Tmax,
-                    hitData, &cont, sbtRecordOffset, payload, sceneData, imageArray, sampler);
+                    hitData, &cont, sbtRecordOffset, payload, sceneData TEXTURE_PARAM);
                 hasIntersected = hasIntersected || result;
                 if (cont == false)
                     return hasIntersected;
@@ -258,19 +267,19 @@ void traceRay(
     float3 direction,
     float Tmin, float Tmax,
     struct Payload* payload,
-    struct SceneData* sceneData,
-    image2d_array_t imageArray, sampler_t sampler)
+    struct SceneData* sceneData
+    TEXTURE_TYPE)
 {
     struct HitData hitData;
     hitData.distance = FLT_MAX;
     if (intersectTop(topLevel, origin, direction, Tmin, Tmax, &hitData, sbtRecordOffset,
-        payload, sceneData, imageArray, sampler))
+        payload, sceneData TEXTURE_PARAM))
     {
-        callHit(sbtRecordOffset, payload, &hitData, sceneData, imageArray, sampler);
+        callHit(sbtRecordOffset, payload, &hitData, sceneData TEXTURE_PARAM);
     }
     else
     {
-        callMiss(missIndex, payload, sceneData, imageArray, sampler);
+        callMiss(missIndex, payload, sceneData TEXTURE_PARAM);
     }
 }
 

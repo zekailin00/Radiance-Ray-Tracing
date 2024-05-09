@@ -5,6 +5,8 @@
 
 #include <radiance.h>
 
+#ifdef IMAGE_SUPPORT
+
 #define INCLUDE_SCENE_DESC(scene)   \
 scene->meshInfoData,                \
 scene->vertexData,                  \
@@ -27,6 +29,27 @@ RD::TEX_ARRAY_TYPE,                 \
 RD::IMAGE_SAMPLER_TYPE,             \
 RD::ACCEL_STRUCT_TYPE
 
+#else
+
+#define INCLUDE_SCENE_DESC(scene)   \
+scene->meshInfoData,                \
+scene->vertexData,                  \
+scene->indexData,                   \
+scene->uvData,                      \
+scene->normalData,                  \
+scene->materialData,                \
+scene->topAccelStruct 
+
+#define INCLUDE_SCENE_LAYOUT        \
+RD::BUFFER_TYPE,                    \
+RD::BUFFER_TYPE,                    \
+RD::BUFFER_TYPE,                    \
+RD::BUFFER_TYPE,                    \
+RD::BUFFER_TYPE,                    \
+RD::BUFFER_TYPE,                    \
+RD::ACCEL_STRUCT_TYPE
+
+#endif
 
 namespace RD
 {

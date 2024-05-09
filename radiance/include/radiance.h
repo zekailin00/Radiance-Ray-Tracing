@@ -60,21 +60,11 @@ typedef std::vector<DescriptorType> PipelineLayout;
 typedef cl_kernel ShaderModule;
 
 #define SHADER_UNUSED (~0U)
-struct ShaderGroup
-{
-    ShaderModule generalShader; // from Vulkan. Either miss or raygen
-    ShaderModule closestHitShader;
-    ShaderModule anyHitShader; // TODO: names of the shader functions 
-    //ShaderModule intersectionShader; // No intersection shader. triangles only
-};
 
 struct PipelineCreateInfo
 {
-    unsigned int                maxRayRecursionDepth;
     PipelineLayout              layout;
-
-    std::vector<ShaderModule>   modules;
-    std::vector<ShaderGroup>    groups;
+    ShaderModule                modules;
 };
 
 typedef PipelineCreateInfo Pipeline;
