@@ -1,8 +1,6 @@
 #include <cassert>
 
-// #define OFF_SCREEN // defined in cmake file
-// #define LOAD_FROM_CACHE
-// #define IMAGE_SUPPORT // TODO: pocl backend support
+#define LOAD_FROM_CACHE
 
 #include "radiance.h"
 #include "sceneBuilder.h"
@@ -112,7 +110,7 @@ int main()
     std::string shaderPath;
 #ifdef POCL_SUPPORT
     shaderPath = "/scratch/zekailin00/vortex/tests/opencl/vecadd/kernel.pocl";
-else
+#else
     shaderPath = "/home/zekailin00/Desktop/ray-tracing/framework/samples/shader.cl";
 #endif
 
@@ -186,14 +184,14 @@ else
     ////////////////////////////////////////////////////////////
     // cornell - BVH test sphere
     camData = {
-        .widthPixel = 2000.0f,      .heightPixel = 2000.0f,
+        .widthPixel = 100.0f,      .heightPixel = 100.0f,
         .focalLength = 0.100f,      .sensorWidth = 0.036f,
         .focalDistance = 14.0f,      .fStop = 0.0f
     };
     blenderToCameraTranslate(0, 16, 6.5, camData.x, camData.y, camData.z);
     blenderToCameraRotation(-105, 180, 0, camData.wx, camData.wy, camData.wz);
     sceneData.lights[0] = blenderToDirLight(-45.0f, 0.0f, 10.0f);
-    rayTracer( "/scratch/zekailin00/Radiance-Ray-Tracing/assets/benchmark/cornell-sphere.glb",
+    rayTracer("/scratch/zekailin00/Radiance-Ray-Tracing/assets/benchmark/cornell-sphere.glb",
         shaderPath, RTProp, camData, sceneData);
 
     // ////////////////////////////////////////////////////////////

@@ -168,9 +168,12 @@ ShaderModule CreateShaderModule(Platform* platform, char* code, unsigned int siz
 
     printf("build program and get raygen kernel\n"); fflush(stdout);
 
-    std::string includeDir = SHADER_LIB_PATH;
-    includeDir = "-g -I" + includeDir;
-    if(clBuildProgram(tracingProgram, 1, &ctx->device_id, includeDir.c_str(), NULL, NULL) < 0)
+    std::string cflags = SHADER_LIB_PATH;
+    cflags = "-g -I" + cflags;
+#ifdef IMAGE_SUPPORT
+    cflags = cflags + " -DIMAGE_SUPPORT";
+#endif
+    if(clBuildProgram(tracingProgram, 1, &ctx->device_id, cflags.c_str(), NULL, NULL) < 0)
     {
         char log[10000];
         size_t retSize;

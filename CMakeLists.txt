@@ -3,6 +3,7 @@ project(ray-tracing)
 
 option(OFF_SCREEN "Running application in off-screen mode" ON)
 option(POCL_SUPPORT "Use pocl as the OpenCL runtime" ON)
+option(IMAGE_SUPPORT "Support for texture sampling" OFF)
 
 if (OFF_SCREEN)
     add_definitions(-DOFF_SCREEN)
@@ -10,6 +11,10 @@ endif()
 
 if (POCL_SUPPORT)
     add_definitions(-DPOCL_SUPPORT)
+endif()
+
+if (IMAGE_SUPPORT)
+    add_definitions(-DIMAGE_SUPPORT)
 endif()
 
 if(NOT POCL_SUPPORT)
