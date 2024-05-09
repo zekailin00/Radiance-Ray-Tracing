@@ -31,7 +31,7 @@ do {                                                                    \
         break;                                                          \
     printf("OpenCL Error: '%s' returned %d!\n", #_expr, (int)_err);     \
     ctx->Cleanup();			                                            \
-    exit(-1);                                                           \
+    throw;                                                           \
 } while (0)
 
 #define CL_CHECK2(_expr)                                                \
@@ -41,7 +41,7 @@ do {                                                                    \
     if (_err != CL_SUCCESS) {                                           \
         printf("OpenCL Error: '%s' returned %d at line %d!\n", #_expr, (int)_err, __LINE__); \
     ctx->Cleanup();			                                            \
-        exit(-1);                                                       \
+        throw;                                                       \
     }                                                                   \
     _ret;                                                               \
 })
