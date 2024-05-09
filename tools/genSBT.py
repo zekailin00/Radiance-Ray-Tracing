@@ -15,31 +15,46 @@ def read_json_file(file_path):
         print(f"An error occurred: {e}")
 
 
+anyHitBegin = """
+void callAnyHit(bool* cont, int sbtRecordOffset, struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData TEXTURE_TYPE)
+{
+    int index = hitData->instanceSBTOffset + sbtRecordOffset;
+    switch (index)
+    {
+"""
+anyHitEnd = """
+    }
+}
+"""
+
+
 hitBegin = """
-void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitData, struct SceneData* sceneData)
+void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData TEXTURE_TYPE)
 {
     int index = hitData->instanceSBTOffset + sbtRecordOffset;
     switch (index)
     {
 """
 hitEnd = """
-        default: printf("Error: No hit shader found.");
     }
 }
 """
 
 missBegin = """
-void callMiss(int missIndex, struct Payload* payload, struct SceneData* sceneData)
+void callMiss(int missIndex, struct Payload* payload,
+    struct SceneData* sceneData TEXTURE_TYPE)
 {
     switch (missIndex)
     {
 """
 missEnd = """
-        default: printf("Error: No miss shader found.");
     }
 }
 """
 
+anyHitBranch = ""
 hitBranch = ""
 missBranch = ""
 
@@ -55,18 +70,24 @@ if __name__ == "__main__":
               "  2. closestHit: ",  data[i]["closestHit"], 
               "  3. anyHit: ", data[i]["anyHit"],
               "  4. miss: ",  data[i]["miss"])
-    
+        
+        if data[i]["anyHit"]:
+            anyHit = "\t\tcase " + str(i) + ":" +  data[i]["anyHit"] + "(cont, payload, hitData, sceneData TEXTURE_PARAM);break;\n"
+            anyHitBranch = anyHitBranch + anyHit
         if data[i]["closestHit"]:
-            hit = "\t\tcase " + str(i) + ":" +  data[i]["closestHit"] + "(payload, hitData, sceneData);break;\n"
+            hit = "\t\tcase " + str(i) + ":" +  data[i]["closestHit"] + "(payload, hitData, sceneData TEXTURE_PARAM);break;\n"
             hitBranch = hitBranch + hit
         if data[i]["miss"]:
-            miss = "\t\tcase " + str(i) +  ":" + data[i]["miss"] + "(payload, sceneData);break;\n"
+            miss = "\t\tcase " + str(i) +  ":" + data[i]["miss"] + "(payload, sceneData TEXTURE_PARAM);break;\n"
             missBranch = missBranch + miss
 
-    hitBranch  = hitBegin  + hitBranch  + hitEnd  + '\n'
-    missBranch = missBegin + missBranch + missEnd + '\n'
+    anyHitBranch = anyHitBegin + anyHitBranch + anyHitEnd + '\n'
+    hitBranch    = hitBegin  + hitBranch  + hitEnd  + '\n'
+    missBranch   = missBegin + missBranch + missEnd + '\n'
 
-    print("\nGenerated hit branches:")
+    print("\nGenerated anyHit branches:")
+    print(anyHitBranch)
+    print("Generated hit branches:")
     print(hitBranch)
     print("Generated miss branches:")
     print(missBranch)
@@ -75,7 +96,7 @@ if __name__ == "__main__":
         original_content = file.read()
 
     # Step 2: Combine the original content with the additional string
-    combined_content = original_content + hitBranch + missBranch
+    combined_content = original_content + anyHitBranch + hitBranch + missBranch
 
     # Step 3: Write the combined content to a new file
     with open("./tmp.cl", 'w') as file:

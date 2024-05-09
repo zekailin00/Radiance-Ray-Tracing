@@ -1,9 +1,18 @@
 [
-    {"raygen": "raygen", "closestHit": "",         "anyHit": "",          "miss": ""},
-    {"raygen": "",       "closestHit": "material", "anyHit": "",          "miss": ""},
-    {"raygen": "",       "closestHit": "shadow",   "anyHit": "anyShadow", "miss": ""},
-    {"raygen": "",       "closestHit": "",         "anyHit": "",          "miss": "environment"},
-    {"raygen": "",       "closestHit": "",         "anyHit": "",          "miss": "shadowMiss"}
+    {"raygen": "raygen", "closestHit": "",          "anyHit": "",          "miss": ""},
+    {"raygen": "",       "closestHit": "material",  "anyHit": "",          "miss": ""},
+    {"raygen": "",       "closestHit": "shadow",    "anyHit": "anyShadow", "miss": ""},
+    {"raygen": "",       "closestHit": "",          "anyHit": "",          "miss": "environment"},
+    {"raygen": "",       "closestHit": "",          "anyHit": "",          "miss": "shadowMiss"},
+    {"raygen": "",       "closestHit": "dbgNorm",   "anyHit": "",          "miss": ""},
+    {"raygen": "",       "closestHit": "dbgBary",   "anyHit": "",          "miss": ""},
+    {"raygen": "",       "closestHit": "dbgAlbedo", "anyHit": "",          "miss": ""},
+    {"raygen": "",       "closestHit": "dbgMetal",  "anyHit": "",          "miss": ""},
+    {"raygen": "",       "closestHit": "dbgRough",  "anyHit": "",          "miss": ""},
+    {"raygen": "",       "closestHit": "dbgBRDF",   "anyHit": "",          "miss": ""},
+    {"raygen": "",       "closestHit": "dbgFres",   "anyHit": "",          "miss": ""},
+    {"raygen": "",       "closestHit": "dbgGGX",    "anyHit": "",          "miss": ""},
+    {"raygen": "",       "closestHit": "dbgMask",   "anyHit": "",          "miss": ""}
 ]
 
 

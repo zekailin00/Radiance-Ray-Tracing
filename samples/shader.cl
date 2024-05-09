@@ -233,16 +233,27 @@ __kernel void raygen(
         float3 contribution = 1.0f;
         while (sceneData.depth < RTProp->depth)
         {
-            traceRay(topLevel, 1, 3, payload.nextRayOrigin, payload.nextRayDirection,
+            int hitShaderIndex;
+            if (RTProp->debug)
+                hitShaderIndex = RTProp->debug + 4;
+            else
+                hitShaderIndex = 1;
+
+            traceRay(topLevel, hitShaderIndex, 3, payload.nextRayOrigin, payload.nextRayDirection,
                 0.001f, 1000, &payload, &sceneData TEXTURE_PARAM);
 
             if (payload.hit)
             {
-                // Shadow test 
-                traceRay(topLevel, 2, 4, payload.shadowOrigin, payload.shadowDirection,
-                    0.001f, 1000, &payload, &sceneData TEXTURE_PARAM);
-                color += contribution * (payload.radiance + payload.ambience);
-                contribution *= payload.nextFactor;
+                if (RTProp->debug)
+                    color = payload.radiance;
+                else
+                {
+                    // Shadow test 
+                    traceRay(topLevel, 2, 4, payload.shadowOrigin, payload.shadowDirection,
+                        0.001f, 1000, &payload, &sceneData TEXTURE_PARAM);
+                    color += contribution * (payload.radiance + payload.ambience);
+                    contribution *= payload.nextFactor;
+                }
             }
             else if (sceneData.depth == 0)
             {
@@ -565,16 +576,141 @@ void anyShadow(bool* cont, struct Payload* payload, struct HitData* hitData,
     *cont = false;
 }
 
+////////// Debug shaders begin //////////////////////
+
+void dbgNorm(struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData TEXTURE_TYPE)
+{
+    payload->hit = true;
+    float3 faceN = getFaceNormal(sceneData, hitData);
+    float3 N = getMatNormal(sceneData, hitData TEXTURE_PARAM, faceN);
+
+    // [debug] normal viz
+    // R:x, G:y, B:z = [0.0, 0.1]
+    //      +y        in:  -z
+    //  +x      -x
+    //      -y        out: +z
+    payload->radiance = N / 2.0f + 0.5f;
+}
+
+void dbgBary(struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData TEXTURE_TYPE)
+{
+    payload->hit = true;
+    payload->radiance.xyz = hitData->barycentric.xyz;
+}
+
+void dbgAlbedo(struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData TEXTURE_TYPE)
+{
+    payload->hit = true;
+    float3 albedo = getAlbedo(sceneData, hitData TEXTURE_PARAM);
+    payload->radiance = albedo;
+}
+
+void dbgMetal(struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData TEXTURE_TYPE)
+{
+    payload->hit = true;
+    // float4 mat <x,y,z,w> := <metallic, roughness, transmission, ior>
+    float4 mat = getMaterialProp(sceneData, hitData TEXTURE_PARAM);
+    payload->radiance = mat.x;
+}
+
+void dbgRough(struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData TEXTURE_TYPE)
+{
+    payload->hit = true;
+    // float4 mat <x,y,z,w> := <metallic, roughness, transmission, ior>
+    float4 mat = getMaterialProp(sceneData, hitData TEXTURE_PARAM);
+    payload->radiance = mat.y;
+}
+
+void dbgBRDF(struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData TEXTURE_TYPE)
+{
+    payload->hit = true;
+
+    float3 faceN = getFaceNormal(sceneData, hitData);
+    
+    float3 N = getMatNormal(sceneData, hitData TEXTURE_PARAM, faceN);
+    float3 L = getLightDirection(sceneData);
+    float3 V = getViewDirection(payload);
+
+    // float4 mat <x,y,z,w> := <metallic, roughness, transmission, ior>
+    float4 mat = getMaterialProp(sceneData, hitData TEXTURE_PARAM);
+    float3 albedo = getAlbedo(sceneData, hitData TEXTURE_PARAM);
+
+    float3 brdf = microfacetBRDF(L, V, N, albedo, mat.x, mat.y, mat.z, mat.w);
+    payload->radiance = brdf / (brdf + 1.0f);
+}
+
+void dbgFres(struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData TEXTURE_TYPE)
+{
+    payload->hit = true;
+
+    float3 L = getLightDirection(sceneData);
+    float3 V = getViewDirection(payload);
+
+    // float4 mat <x,y,z,w> := <metallic, roughness, transmission, ior>
+    float4 mat = getMaterialProp(sceneData, hitData TEXTURE_PARAM);
+    float3 albedo = getAlbedo(sceneData, hitData TEXTURE_PARAM);
+    
+    // Frensel reflection
+    float3 H = normalize(V + L);
+    float dotVH = clamp(dot(V, H), 0.0f, 1.0f);
+    payload->radiance = F_Schlick(dotVH, mat.x, albedo);
+}
+
+void dbgGGX(struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData TEXTURE_TYPE)
+{
+    payload->hit = true;
+
+    // float4 mat <x,y,z,w> := <metallic, roughness, transmission, ior>
+    float4 mat = getMaterialProp(sceneData, hitData TEXTURE_PARAM);
+    float3 faceN = getFaceNormal(sceneData, hitData);
+
+    float3 N = getMatNormal(sceneData, hitData TEXTURE_PARAM, faceN);
+    float3 L = getLightDirection(sceneData);
+    float3 V = getViewDirection(payload);
+    float3 H = normalize(V + L);
+    float dotNH = clamp(dot(N, H), 0.0f, 1.0f);
+
+    float D = D_GGX(dotNH, mat.y);
+    payload->radiance = clamp(D, 0.0f, 1.0f);
+}
+
+void dbgMask(struct Payload* payload, struct HitData* hitData,
+    struct SceneData* sceneData TEXTURE_TYPE)
+{
+    payload->hit = true;
+
+    // float4 mat <x,y,z,w> := <metallic, roughness, transmission, ior>
+    float4 mat = getMaterialProp(sceneData, hitData TEXTURE_PARAM);
+    float3 faceN = getFaceNormal(sceneData, hitData);
+
+    float3 N = getMatNormal(sceneData, hitData TEXTURE_PARAM, faceN);
+    float3 L = getLightDirection(sceneData);
+    float3 V = getViewDirection(payload);
+
+    float G = G_pbrt(V, L, N, mat.y);
+    payload->radiance = G;
+}
+
+////////// Debug shaders end //////////////////////
 void callAnyHit(bool* cont, int sbtRecordOffset, struct Payload* payload, struct HitData* hitData,
     struct SceneData* sceneData TEXTURE_TYPE)
 {
-
     int index = hitData->instanceSBTOffset + sbtRecordOffset;
     switch (index)
     {
 		case 2:anyShadow(cont, payload, hitData, sceneData TEXTURE_PARAM);break;
+
     }
 }
+
 
 void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitData,
     struct SceneData* sceneData TEXTURE_TYPE)
@@ -584,6 +720,16 @@ void callHit(int sbtRecordOffset, struct Payload* payload, struct HitData* hitDa
     {
 		case 1:material(payload, hitData, sceneData TEXTURE_PARAM);break;
 		case 2:shadow(payload, hitData, sceneData TEXTURE_PARAM);break;
+		case 5:dbgNorm(payload, hitData, sceneData TEXTURE_PARAM);break;
+		case 6:dbgBary(payload, hitData, sceneData TEXTURE_PARAM);break;
+		case 7:dbgAlbedo(payload, hitData, sceneData TEXTURE_PARAM);break;
+		case 8:dbgMetal(payload, hitData, sceneData TEXTURE_PARAM);break;
+		case 9:dbgRough(payload, hitData, sceneData TEXTURE_PARAM);break;
+		case 10:dbgBRDF(payload, hitData, sceneData TEXTURE_PARAM);break;
+		case 11:dbgFres(payload, hitData, sceneData TEXTURE_PARAM);break;
+		case 12:dbgGGX(payload, hitData, sceneData TEXTURE_PARAM);break;
+		case 13:dbgMask(payload, hitData, sceneData TEXTURE_PARAM);break;
+
     }
 }
 
@@ -595,114 +741,7 @@ void callMiss(int missIndex, struct Payload* payload,
     {
 		case 3:environment(payload, sceneData TEXTURE_PARAM);break;
 		case 4:shadowMiss(payload, sceneData TEXTURE_PARAM);break;
+
     }
 }
 
-//    if (sceneData->debug == 1)
-//     {
-//         // [debug] normal viz
-//         // R:x, G:y, B:z = [0.0, 0.1]
-//         //      +y        in:  -z
-//         //  +x      -x
-//         //      -y        out: +z
-//         payload->radiance = N / 2.0f + 0.5f;
-//     }
-//     else if (sceneData->debug == 2)
-//     {
-//         payload->radiance = L / 2.0f + 0.5f;
-//     }
-//     else if (sceneData->debug == 3)
-//     {
-//         payload->radiance = V / 2.0f + 0.5f;
-//     }
-//     else if (sceneData->debug == 4)
-//     {
-//         payload->radiance = dot(N, L) / 2.0f + 0.5f;
-//     }
-//     else if (sceneData->debug == 5)
-//     {
-//         float3 a = BRDF(L, V, N, metallicFrag, roughnessFrag, albedoFrag);
-//         payload->radiance = (a) / ((a) + 1.0f);
-//     }
-//     else if (sceneData->debug == 6)
-//     {
-//         // Shadow test: white color if no occlusion
-//         struct Payload shadowPayload;
-//         traceRay(sceneData->topLevel, 2, 4, hitPos, L, 0.01, 1000, &shadowPayload,
-//             sceneData TEXTURE_PARAM);
-//         payload->radiance = shadowPayload.color;
-//     }
-//     else if (sceneData->debug == 7)
-//     {
-//         payload->radiance.x = hitData->barycentric.x;
-//         payload->radiance.y = hitData->barycentric.y;
-//         payload->radiance.z = hitData->barycentric.z;
-//     }
-//     else if (sceneData->debug == 8)
-//     {
-//         payload->radiance = albedoFrag;
-//     }
-//     else if (sceneData->debug == 9)
-//     {
-//         payload->radiance.x = metallicFrag;
-//         payload->radiance.y = metallicFrag;
-//         payload->radiance.z = metallicFrag;
-//     }
-//     else if (sceneData->debug == 10)
-//     {
-//         payload->radiance.x = roughnessFrag;
-//         payload->radiance.y = roughnessFrag;
-//         payload->radiance.z = roughnessFrag;
-//     }
-//     else if (sceneData->debug == 11)
-//     {   // Diffuse component
-//         float3 H = normalize(V + L);
-//         float dotVH = clamp(dot(V, H), 0.0f, 1.0f);
-//         float3 F = F_Schlick(dotVH, metallicFrag, albedoFrag);
-//         float3 c_diff = albedoFrag * (1.0f - metallicFrag);
-//         float3 f_diffuse  = (1 - F) * (1 / 3.1415f) * c_diff;
-//         payload->radiance = f_diffuse;
-//     }
-//     else if (sceneData->debug == 12)
-//     {   // Frensel reflection
-//         float3 H = normalize(V + L);
-//         float dotVH = clamp(dot(V, H), 0.0f, 1.0f);
-//         payload->radiance = F_Schlick(dotVH, metallicFrag, albedoFrag);
-//     }
-//     else if (sceneData->debug == 13)
-//     {
-//         float3 H = normalize(V + L);
-//         float dotNH = clamp(dot(N, H), 0.0f, 1.0f);
-
-//         float D = D_GGX(dotNH, roughnessFrag);
-//         payload->radiance = clamp(D, 0.0f, 1.0f);
-//     }
-//     else if (sceneData->debug == 14)
-//     {
-//         float dotNV = clamp(dot(N, V), 0.0f, 1.0f);
-//         float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
-
-//         float G = G_Smith_Disney(dotNL, dotNV, roughnessFrag);
-//         payload->radiance = G;
-//     }
-//     else if (sceneData->debug == 15)
-//     {
-//         float dotNV = clamp(dot(N, V), 0.0f, 1.0f);
-//         float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
-
-//         float G = G_SchlicksmithGGX(dotNL, dotNV, roughnessFrag);
-//         payload->radiance = G;
-//     }
-//     else if (sceneData->debug == 16)
-//     {
-//         float dotNV = clamp(dot(N, V), 0.0f, 1.0f);
-//         float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
-
-//         float G = G_SmithGGXCorrelated(dotNL, dotNV, roughnessFrag);
-//         payload->radiance = (1.0f / (G)) / (1.0f / (G) + 1);
-//     }
-//     else if (sceneData->debug == 17)
-//     {
-//         float G = G_pbrt(V, L, N, roughnessFrag);
-//         payload->radiance = G;
-//     }
