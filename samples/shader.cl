@@ -3,8 +3,12 @@
 
 struct Payload
 {
-    float3 color;
+    float3 radiance;
+    float3 ambience;
     bool hit;
+
+    float3 shadowOrigin;
+    float3 shadowDirection;
 
     float3 nextFactor;
     float3 nextRayOrigin;
@@ -206,9 +210,7 @@ __kernel void raygen(
         generateRay(camData, randInput, &rayOrigin, &rayDirection);
 
         struct Payload payload;
-        payload.color[0] = 0.0f;
-        payload.color[1] = 0.0f;
-        payload.color[2] = 0.0f;
+        payload.radiance = 0.0f;
         payload.nextFactor = 1.0f;
         payload.nextRayOrigin = rayOrigin;
         payload.nextRayDirection = rayDirection;
@@ -237,13 +239,16 @@ __kernel void raygen(
 
             if (payload.hit)
             {
-                color += contribution * payload.color;
+                // Shadow test 
+                traceRay(topLevel, 2, 4, payload.shadowOrigin, payload.shadowDirection,
+                    0.001f, 1000, &payload, &sceneData, imageArray, sampler);
+                color += contribution * (payload.radiance + payload.ambience);
                 contribution *= payload.nextFactor;
             }
             else if (sceneData.depth == 0)
             {
                 // No direct hit, set background color.
-                color = payload.color;
+                color = payload.radiance;
             }
             else
             {
@@ -376,7 +381,7 @@ inline float3 getMatNormal(struct SceneData* sceneData, struct HitData* hitData,
     {
         float2 uv = getUV(sceneData, hitData);
         float4 coord = {uv.x, 1.0f - uv.y, (float)material->normalTexIdx, 0.0f};
-        uint4 tex = 0.0f;//read_imageui(imageArray, sampler, coord);
+        uint4 tex = read_imageui(imageArray, sampler, coord);
         float4 localNormal = {
             clamp(tex.x / 255.0f, 0.0f, 1.0f),
             clamp(tex.y / 255.0f, 0.0f, 1.0f),
@@ -408,7 +413,7 @@ inline float4 getMaterialProp(struct SceneData* sceneData, struct HitData* hitDa
     else
     {
         float4 coord = {uv.x, 1.0f - uv.y, (float)material->metallicTexIdx, 0.0f};
-        uint4 tex = 0.0f;//read_imageui(imageArray, sampler, coord);
+        uint4 tex = read_imageui(imageArray, sampler, coord);
         metallicFrag = clamp(tex.z / 255.0f, 0.0f, 1.0f);
     }
 
@@ -418,7 +423,7 @@ inline float4 getMaterialProp(struct SceneData* sceneData, struct HitData* hitDa
     else
     {
         float4 coord = {uv.x, 1.0f - uv.y, (float)material->roughnessTexIdx, 0.0f};
-        uint4 tex = 0.0f;//read_imageui(imageArray, sampler, coord);
+        uint4 tex = read_imageui(imageArray, sampler, coord);
         roughnessFrag = clamp(tex.y / 255.0f, 0.05f, 1.0f);
     }
 
@@ -442,7 +447,7 @@ inline float3 getAlbedo(struct SceneData* sceneData, struct HitData* hitData,
     else
     {
         float4 coord = {uv.x, 1.0f - uv.y, (float)material->albedoTexIdx, 0.0f};
-        uint4 tex = 0.0f;//read_imageui(imageArray, sampler, coord);
+        uint4 tex = read_imageui(imageArray, sampler, coord);
         albedoFrag.x = clamp(tex.x / 255.0f, 0.0f, 1.0f);
         albedoFrag.y = clamp(tex.y / 255.0f, 0.0f, 1.0f);
         albedoFrag.z = clamp(tex.z / 255.0f, 0.0f, 1.0f);
@@ -495,25 +500,11 @@ void material(struct Payload* payload, struct HitData* hitData,
     float4 mat = getMaterialProp(sceneData, hitData, imageArray, sampler);
     float3 albedo = getAlbedo(sceneData, hitData, imageArray, sampler);
 
-    // Shadow test 
-    struct Payload shadowPayload;
-    traceRay(sceneData->topLevel, 2, 4, hitPos, L, 0.001f, 1000,
-        &shadowPayload, sceneData, imageArray, sampler);
-
-    float3 color = {0.0f, 0.0f, 0.0f};
-    if (!shadowPayload.hit) // TODO: support multiple lights
-    {
-        __global struct SceneProperties* scene = sceneData->scene;
-        float3 radiance = scene->lights[0].color.rgb; // dot is included in brdf
-        color += microfacetBRDF(L, V, N, albedo, mat.x, mat.y, mat.z, mat.w) * radiance;
-    }
-
-    // Combine with ambient
-    color += albedo * 0.1f;
-
-    payload->color[0] = color.x;
-    payload->color[1] = color.y;
-    payload->color[2] = color.z;
+    float3 light = sceneData->scene->lights[0].color.rgb; // dot is included in brdf
+    payload->radiance = microfacetBRDF(L, V, N, albedo, mat.x, mat.y, mat.z, mat.w) * light;
+    payload->ambience = albedo * 0.1f;
+    payload->shadowDirection = L;
+    payload->shadowOrigin = hitPos;
 
     ////////////////////////////////////////
     //      Global illumination Begin     //
@@ -544,16 +535,15 @@ void shadowMiss(struct Payload* payload,
     struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
 {
     payload->hit = false;
-    payload->color = 1.0f;
 }
 
 void environment(struct Payload* payload,
     struct SceneData* sceneData, image2d_array_t imageArray, sampler_t sampler)
 {
     payload->hit = false;
-    payload->color.x = 0.2f;
-    payload->color.y = 0.2f;
-    payload->color.z = 0.5f;
+    payload->radiance.x = 0.2f;
+    payload->radiance.y = 0.2f;
+    payload->radiance.z = 0.5f;
 }
 
 void shadow(struct Payload* payload, struct HitData* hitData,
@@ -561,7 +551,7 @@ void shadow(struct Payload* payload, struct HitData* hitData,
 {
     // Shadow test
     payload->hit = true;
-    payload->color = 0.0f;
+    payload->radiance = 0.0f;
 }
 
 void anyShadow(bool* cont, struct Payload* payload, struct HitData* hitData,
@@ -611,24 +601,24 @@ void callMiss(int missIndex, struct Payload* payload,
 //         //      +y        in:  -z
 //         //  +x      -x
 //         //      -y        out: +z
-//         payload->color = N / 2.0f + 0.5f;
+//         payload->radiance = N / 2.0f + 0.5f;
 //     }
 //     else if (sceneData->debug == 2)
 //     {
-//         payload->color = L / 2.0f + 0.5f;
+//         payload->radiance = L / 2.0f + 0.5f;
 //     }
 //     else if (sceneData->debug == 3)
 //     {
-//         payload->color = V / 2.0f + 0.5f;
+//         payload->radiance = V / 2.0f + 0.5f;
 //     }
 //     else if (sceneData->debug == 4)
 //     {
-//         payload->color = dot(N, L) / 2.0f + 0.5f;
+//         payload->radiance = dot(N, L) / 2.0f + 0.5f;
 //     }
 //     else if (sceneData->debug == 5)
 //     {
 //         float3 a = BRDF(L, V, N, metallicFrag, roughnessFrag, albedoFrag);
-//         payload->color = (a) / ((a) + 1.0f);
+//         payload->radiance = (a) / ((a) + 1.0f);
 //     }
 //     else if (sceneData->debug == 6)
 //     {
@@ -636,29 +626,29 @@ void callMiss(int missIndex, struct Payload* payload,
 //         struct Payload shadowPayload;
 //         traceRay(sceneData->topLevel, 2, 4, hitPos, L, 0.01, 1000, &shadowPayload,
 //             sceneData, imageArray, sampler);
-//         payload->color = shadowPayload.color;
+//         payload->radiance = shadowPayload.color;
 //     }
 //     else if (sceneData->debug == 7)
 //     {
-//         payload->color.x = hitData->barycentric.x;
-//         payload->color.y = hitData->barycentric.y;
-//         payload->color.z = hitData->barycentric.z;
+//         payload->radiance.x = hitData->barycentric.x;
+//         payload->radiance.y = hitData->barycentric.y;
+//         payload->radiance.z = hitData->barycentric.z;
 //     }
 //     else if (sceneData->debug == 8)
 //     {
-//         payload->color = albedoFrag;
+//         payload->radiance = albedoFrag;
 //     }
 //     else if (sceneData->debug == 9)
 //     {
-//         payload->color.x = metallicFrag;
-//         payload->color.y = metallicFrag;
-//         payload->color.z = metallicFrag;
+//         payload->radiance.x = metallicFrag;
+//         payload->radiance.y = metallicFrag;
+//         payload->radiance.z = metallicFrag;
 //     }
 //     else if (sceneData->debug == 10)
 //     {
-//         payload->color.x = roughnessFrag;
-//         payload->color.y = roughnessFrag;
-//         payload->color.z = roughnessFrag;
+//         payload->radiance.x = roughnessFrag;
+//         payload->radiance.y = roughnessFrag;
+//         payload->radiance.z = roughnessFrag;
 //     }
 //     else if (sceneData->debug == 11)
 //     {   // Diffuse component
@@ -667,13 +657,13 @@ void callMiss(int missIndex, struct Payload* payload,
 //         float3 F = F_Schlick(dotVH, metallicFrag, albedoFrag);
 //         float3 c_diff = albedoFrag * (1.0f - metallicFrag);
 //         float3 f_diffuse  = (1 - F) * (1 / 3.1415f) * c_diff;
-//         payload->color = f_diffuse;
+//         payload->radiance = f_diffuse;
 //     }
 //     else if (sceneData->debug == 12)
 //     {   // Frensel reflection
 //         float3 H = normalize(V + L);
 //         float dotVH = clamp(dot(V, H), 0.0f, 1.0f);
-//         payload->color = F_Schlick(dotVH, metallicFrag, albedoFrag);
+//         payload->radiance = F_Schlick(dotVH, metallicFrag, albedoFrag);
 //     }
 //     else if (sceneData->debug == 13)
 //     {
@@ -681,7 +671,7 @@ void callMiss(int missIndex, struct Payload* payload,
 //         float dotNH = clamp(dot(N, H), 0.0f, 1.0f);
 
 //         float D = D_GGX(dotNH, roughnessFrag);
-//         payload->color = clamp(D, 0.0f, 1.0f);
+//         payload->radiance = clamp(D, 0.0f, 1.0f);
 //     }
 //     else if (sceneData->debug == 14)
 //     {
@@ -689,7 +679,7 @@ void callMiss(int missIndex, struct Payload* payload,
 //         float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
 
 //         float G = G_Smith_Disney(dotNL, dotNV, roughnessFrag);
-//         payload->color = G;
+//         payload->radiance = G;
 //     }
 //     else if (sceneData->debug == 15)
 //     {
@@ -697,7 +687,7 @@ void callMiss(int missIndex, struct Payload* payload,
 //         float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
 
 //         float G = G_SchlicksmithGGX(dotNL, dotNV, roughnessFrag);
-//         payload->color = G;
+//         payload->radiance = G;
 //     }
 //     else if (sceneData->debug == 16)
 //     {
@@ -705,10 +695,10 @@ void callMiss(int missIndex, struct Payload* payload,
 //         float dotNL = clamp(dot(N, L), 0.0f, 1.0f);
 
 //         float G = G_SmithGGXCorrelated(dotNL, dotNV, roughnessFrag);
-//         payload->color = (1.0f / (G)) / (1.0f / (G) + 1);
+//         payload->radiance = (1.0f / (G)) / (1.0f / (G) + 1);
 //     }
 //     else if (sceneData->debug == 17)
 //     {
 //         float G = G_pbrt(V, L, N, roughnessFrag);
-//         payload->color = G;
+//         payload->radiance = G;
 //     }
