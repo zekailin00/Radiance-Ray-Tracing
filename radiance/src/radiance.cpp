@@ -183,7 +183,7 @@ ShaderModule CreateShaderModule(Platform* platform, char* code, unsigned int siz
         throw;
     }
 
-    cl_kernel raygen = CL_CHECK2(clCreateKernel(tracingProgram, "raygen", &_err));
+    cl_kernel raygen = CL_CHECK2(clCreateKernel(tracingProgram, name, &_err));
     return raygen;
 }
 

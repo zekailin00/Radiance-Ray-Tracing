@@ -119,8 +119,8 @@ int main()
 
     /* Define pipeline data inputs */
     RD::RayTraceProperties RTProp = {
-        .totalSamples = 0,  .batchSize = 512,
-        .depth = 8,         .debug = 0
+        .totalSamples = 0,  .batchSize = 5,
+        .depth = 3,         .debug = 0
     };
 
     // // cornell
@@ -184,7 +184,7 @@ int main()
     ////////////////////////////////////////////////////////////
     // cornell - BVH test sphere
     camData = {
-        .widthPixel = 100.0f,      .heightPixel = 100.0f,
+        .widthPixel = 20.0f,      .heightPixel = 20.0f,
         .focalLength = 0.100f,      .sensorWidth = 0.036f,
         .focalDistance = 14.0f,      .fStop = 0.0f
     };
@@ -406,7 +406,7 @@ void rayTracer(const std::string& modelFile, std::string& shaderPath,
     char* shaderCode;
     size_t shaderSize;
     RD::read_kernel_file_str(shaderPath.c_str(), &shaderCode, &shaderSize);
-    RD::ShaderModule shader = RD::CreateShaderModule(plt, shaderCode, shaderSize, "functName..");
+    RD::ShaderModule shader = RD::CreateShaderModule(plt, shaderCode, shaderSize, "raygen");
 
     RD::Pipeline pipeline = RD::CreatePipeline({layout, shader});
 
